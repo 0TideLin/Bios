@@ -20,7 +20,7 @@
 #
 # The following information is for reference only and not required by the build tools.
 #
-#  VALID_ARCHITECTURES           = IA32 X64 EBC
+#  VALID_ARCHITECTURES           = IA32 X64 AARCH64 EBC
 #
 
 [Sources]
@@ -42,6 +42,9 @@
   Ia32/Gasket.S       # enforce 16-byte stack alignment for Mac OS X
   Ia32/SwitchStack.c
 
+[Sources.AARCH64]
+  AArch64/Gasket.c
+  AArch64/SwitchStack.S
 
 [Packages]
   MdePkg/MdePkg.dec
@@ -126,6 +129,11 @@
    GCC:*_*_X64_PP_FLAGS == -m64 -E -x assembler-with-cpp -include $(DEST_DIR_DEBUG)/AutoGen.h
    GCC:*_*_X64_ASM_FLAGS == -m64 -c -x assembler -imacros $(DEST_DIR_DEBUG)/AutoGen.h
 
+   GCC:*_*_AARCH64_DLINK_FLAGS == -fPIC -flto -o $(BIN_DIR)/Host -L/usr/X11R6/lib
+   GCC:*_*_AARCH64_ASM_FLAGS == -g -c -x assembler -imacros $(DEST_DIR_DEBUG)/AutoGen.h
+   GCC:*_*_AARCH64_PP_FLAGS == -E -x assembler-with-cpp -include $(DEST_DIR_DEBUG)/AutoGen.h
+   GCC:*_*_AARCH64_CC_FLAGS == -c -O0 -g -fPIC -fshort-wchar -fno-strict-aliasing -idirafter/usr/include -include $(DEST_DIR_DEBUG)/AutoGen.h -DUSING_LTO -DSTRING_ARRAY_NAME=$(BASE_NAME)Strings
+
    GCC:*_*_*_DLINK2_FLAGS == -lpthread -ldl -lXext -lX11
 
 #
@@ -139,4 +147,9 @@
    XCODE:*_*_X64_DLINK_PATH == gcc
    XCODE:*_*_X64_DLINK_FLAGS == -o $(BIN_DIR)/Host -L/usr/X11R6/lib -lXext -lX11 -framework Carbon -Wl,-no_pie
    XCODE:*_*_X64_ASM_FLAGS == -g
-   XCODE:*_*_X64_CC_FLAGS = -O0 -target x86_64-apple-darwin -I$(WORKSPACE)/EmulatorPkg/Unix/Host/X11IncludeHack "-DEFIAPI=__attribute__((ms_abi))"
+   XCODE:*_*_X64_CC_FLAGS == -O0 -target x86_64-apple-darwin -I$(WORKSPACE)/EmulatorPkg/Unix/Host/X11IncludeHack "-DEFIAPI=__attribute__((ms_abi))"
+
+   XCODE:*_*_AARCH64_DLINK_PATH == clang
+   XCODE:*_*_AARCH64_DLINK_FLAGS == -o $(BIN_DIR)/Host -L/usr/X11R6/lib -lXext -lX11 -framework Carbon -Wl,-no_pie
+   XCODE:*_*_AARCH64_ASM_FLAGS == -g
+   XCODE:*_*_AARCH64_CC_FLAGS == -c -O0 -g -fshort-wchar -fno-strict-aliasing -target arm64-apple-darwin -include $(DEST_DIR_DEBUG)/AutoGen.h -I$(WORKSPACE)/EmulatorPkg/Unix/Host/X11IncludeHack

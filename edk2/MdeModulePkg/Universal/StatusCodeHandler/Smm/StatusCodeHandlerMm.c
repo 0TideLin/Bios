@@ -9,7 +9,8 @@
 
 #include "StatusCodeHandlerMm.h"
 
-EFI_MM_RSC_HANDLER_PROTOCOL  *mRscHandlerProtocol = NULL;
+EFI_MM_RSC_HANDLER_PROTOCOL   *mRscHandlerProtocol       = NULL;
+
 
 /**
   Dispatch initialization request to sub status code devices based on
@@ -21,7 +22,7 @@ InitializationDispatcherWorker (
   VOID
   )
 {
-  EFI_STATUS  Status;
+  EFI_STATUS                        Status;
 
   //
   // If enable UseSerial, then initialize serial port.
@@ -34,7 +35,6 @@ InitializationDispatcherWorker (
     Status = SerialPortInitialize ();
     ASSERT_EFI_ERROR (Status);
   }
-
   if (PcdGetBool (PcdStatusCodeUseMemory)) {
     Status = MemoryStatusCodeInitializeWorker ();
     ASSERT_EFI_ERROR (Status);
@@ -54,12 +54,12 @@ StatusCodeHandlerCommonEntry (
   VOID
   )
 {
-  EFI_STATUS  Status;
+  EFI_STATUS                Status;
 
   Status = gMmst->MmLocateProtocol (
                     &gEfiMmRscHandlerProtocolGuid,
                     NULL,
-                    (VOID **)&mRscHandlerProtocol
+                    (VOID **) &mRscHandlerProtocol
                     );
   ASSERT_EFI_ERROR (Status);
 
@@ -71,7 +71,6 @@ StatusCodeHandlerCommonEntry (
   if (PcdGetBool (PcdStatusCodeUseSerial)) {
     mRscHandlerProtocol->Register (SerialStatusCodeReportWorker);
   }
-
   if (PcdGetBool (PcdStatusCodeUseMemory)) {
     mRscHandlerProtocol->Register (MemoryStatusCodeReportWorker);
   }

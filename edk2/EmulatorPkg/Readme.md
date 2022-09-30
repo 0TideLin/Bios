@@ -35,6 +35,10 @@ https://github.com/tianocore/tianocore.github.io/wiki/EmulatorPkg
 
     `build -p EmulatorPkg\EmulatorPkg.dsc -t GCC5 -a X64`
 
+  * AArch64 emulator in Linux:
+
+    `build -p EmulatorPkg\EmulatorPkg.dsc -t GCC5 -a AARCH64`
+
 **You can start/run the emulator using the following command:**
   * 32bit emulator in Windows:
 
@@ -51,6 +55,10 @@ https://github.com/tianocore/tianocore.github.io/wiki/EmulatorPkg
   * 64bit emulator in Linux:
 
     `cd Build/EmulatorX64/DEBUG_GCC5/X64/ && ./Host`
+
+  * AArch64 emulator in Linux:
+
+    `cd Build/EmulatorAARCH64/DEBUG_GCC5/AARCH64/ && ./Host`
 
 **On posix-like environment with the bash shell you can use EmulatorPkg/build.sh to simplify building and running
 emulator.**

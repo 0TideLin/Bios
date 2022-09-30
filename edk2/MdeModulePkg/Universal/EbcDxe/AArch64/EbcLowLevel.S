@@ -140,7 +140,11 @@ ASM_PFX(EbcLLExecuteEbcImageEntryPoint):
 //****************************************************************************
 // mEbcInstructionBufferTemplate
 //****************************************************************************
+#ifdef __APPLE__
+    .text
+#else
     .section    ".rodata", "a"
+#endif
     .align      3
 ASM_PFX(mEbcInstructionBufferTemplate):
     adr     x17, 0f

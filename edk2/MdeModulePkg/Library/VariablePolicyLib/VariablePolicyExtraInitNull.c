@@ -9,6 +9,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 
 #include <Library/UefiRuntimeServicesTableLib.h>
 
+
 /**
   An extra init hook that enables the RuntimeDxe library instance to
   register VirtualAddress change callbacks. Among other things.
@@ -25,6 +26,7 @@ VariablePolicyExtraInit (
   // NULL implementation.
   return EFI_SUCCESS;
 }
+
 
 /**
   An extra deinit hook that enables the RuntimeDxe library instance to

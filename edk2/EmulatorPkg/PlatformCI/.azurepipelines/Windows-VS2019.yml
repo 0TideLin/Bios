@@ -20,7 +20,7 @@ jobs:
   - job: Platform_CI
     variables:
       package: 'EmulatorPkg'
-      vm_image: 'windows-2019'
+      vm_image: 'windows-latest'
       should_run: true
       run_flags: "MAKE_STARTUP_NSH=TRUE"
 

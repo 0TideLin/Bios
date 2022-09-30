@@ -40,15 +40,16 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 EFI_STATUS
 EFIAPI
 CreateBasicVariablePolicy (
-  IN CONST  EFI_GUID         *Namespace,
-  IN CONST  CHAR16           *Name OPTIONAL,
-  IN        UINT32           MinSize,
-  IN        UINT32           MaxSize,
-  IN        UINT32           AttributesMustHave,
-  IN        UINT32           AttributesCantHave,
-  IN        UINT8            LockPolicyType,
-  OUT VARIABLE_POLICY_ENTRY  **NewEntry
+  IN CONST  EFI_GUID          *Namespace,
+  IN CONST  CHAR16            *Name OPTIONAL,
+  IN        UINT32            MinSize,
+  IN        UINT32            MaxSize,
+  IN        UINT32            AttributesMustHave,
+  IN        UINT32            AttributesCantHave,
+  IN        UINT8             LockPolicyType,
+  OUT VARIABLE_POLICY_ENTRY   **NewEntry
   );
+
 
 /**
   This helper function will allocate and populate a new VariablePolicy
@@ -78,17 +79,18 @@ CreateBasicVariablePolicy (
 EFI_STATUS
 EFIAPI
 CreateVarStateVariablePolicy (
-  IN CONST  EFI_GUID         *Namespace,
-  IN CONST  CHAR16           *Name OPTIONAL,
-  IN        UINT32           MinSize,
-  IN        UINT32           MaxSize,
-  IN        UINT32           AttributesMustHave,
-  IN        UINT32           AttributesCantHave,
-  IN CONST  EFI_GUID         *VarStateNamespace,
-  IN        UINT8            VarStateValue,
-  IN CONST  CHAR16           *VarStateName,
-  OUT VARIABLE_POLICY_ENTRY  **NewEntry
+  IN CONST  EFI_GUID          *Namespace,
+  IN CONST  CHAR16            *Name OPTIONAL,
+  IN        UINT32            MinSize,
+  IN        UINT32            MaxSize,
+  IN        UINT32            AttributesMustHave,
+  IN        UINT32            AttributesCantHave,
+  IN CONST  EFI_GUID          *VarStateNamespace,
+  IN        UINT8             VarStateValue,
+  IN CONST  CHAR16            *VarStateName,
+  OUT VARIABLE_POLICY_ENTRY   **NewEntry
   );
+
 
 /**
   This helper function does everything that CreateBasicVariablePolicy() does, but also
@@ -121,6 +123,7 @@ RegisterBasicVariablePolicy (
   IN        UINT32                          AttributesCantHave,
   IN        UINT8                           LockPolicyType
   );
+
 
 /**
   This helper function does everything that CreateBasicVariablePolicy() does, but also

@@ -83,6 +83,9 @@ case `uname` in
       x86_64)
         HOST_PROCESSOR=X64
         ;;
+      aarch64)
+        HOST_PROCESSOR=AARCH64
+        ;;
     esac
 
     gcc_version=$(gcc -v 2>&1 | tail -1 | awk '{print $3}')
@@ -173,6 +176,11 @@ case $PROCESSOR in
     ARCH_SIZE=64
     LIB_NAMES="ld-linux-x86-64.so.2 libdl.so.2 crt1.o crti.o crtn.o"
     LIB_SEARCH_PATHS="/usr/lib/x86_64-linux-gnu /usr/lib64 /lib64 /usr/lib /lib"
+    ;;
+  AARCH64)
+    ARCH_SIZE=64
+    LIB_NAMES="ld-linux-aarch64.so.1 libdl.so.2 crt1.o crti.o crtn.o"
+    LIB_SEARCH_PATHS="/usr/lib/aarch64-linux-gnu /usr/lib /lib"
     ;;
 esac
 

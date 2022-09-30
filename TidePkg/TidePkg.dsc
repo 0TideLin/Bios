@@ -85,4 +85,4 @@
 
   *_*_*_CC_FLAGS = -fno-stack-protector  #解决报错堆栈保护
 
-!include StdLib/StdLib.inc
+!include StdLib/StdLib.inc  #edk2-libc包解决报错memcpy no define, 编译器C库问题

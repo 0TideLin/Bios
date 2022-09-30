@@ -37,17 +37,16 @@ SMI_HANDLER_PROFILE_PROTOCOL  *mSmiHandlerProfile;
 EFI_STATUS
 EFIAPI
 SmiHandlerProfileRegisterHandler (
-  IN EFI_GUID                      *HandlerGuid,
-  IN EFI_SMM_HANDLER_ENTRY_POINT2  Handler,
-  IN PHYSICAL_ADDRESS              CallerAddress,
-  IN VOID                          *Context  OPTIONAL,
-  IN UINTN                         ContextSize OPTIONAL
+  IN EFI_GUID                       *HandlerGuid,
+  IN EFI_SMM_HANDLER_ENTRY_POINT2   Handler,
+  IN PHYSICAL_ADDRESS               CallerAddress,
+  IN VOID                           *Context, OPTIONAL
+  IN UINTN                          ContextSize OPTIONAL
   )
 {
   if (mSmiHandlerProfile != NULL) {
     return mSmiHandlerProfile->RegisterHandler (mSmiHandlerProfile, HandlerGuid, Handler, CallerAddress, Context, ContextSize);
   }
-
   return EFI_UNSUPPORTED;
 }
 
@@ -71,16 +70,15 @@ SmiHandlerProfileRegisterHandler (
 EFI_STATUS
 EFIAPI
 SmiHandlerProfileUnregisterHandler (
-  IN EFI_GUID                      *HandlerGuid,
-  IN EFI_SMM_HANDLER_ENTRY_POINT2  Handler,
-  IN VOID                          *Context  OPTIONAL,
-  IN UINTN                         ContextSize OPTIONAL
+  IN EFI_GUID                       *HandlerGuid,
+  IN EFI_SMM_HANDLER_ENTRY_POINT2   Handler,
+  IN VOID                           *Context, OPTIONAL
+  IN UINTN                          ContextSize OPTIONAL
   )
 {
   if (mSmiHandlerProfile != NULL) {
     return mSmiHandlerProfile->UnregisterHandler (mSmiHandlerProfile, HandlerGuid, Handler, Context, ContextSize);
   }
-
   return EFI_UNSUPPORTED;
 }
 
@@ -97,7 +95,8 @@ MmSmiHandlerProfileLibInitialization (
   gMmst->MmLocateProtocol (
            &gSmiHandlerProfileGuid,
            NULL,
-           (VOID **)&mSmiHandlerProfile
+           (VOID **) &mSmiHandlerProfile
            );
   return EFI_SUCCESS;
 }
+

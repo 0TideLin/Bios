@@ -46,10 +46,11 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #define STACK_SIZE      0x20000
 #define BSP_STORE_SIZE  0x4000
 
+
 //
 // This PPI is installed to indicate the end of the PEI usage of memory
 //
-extern CONST EFI_PEI_PPI_DESCRIPTOR  gEndOfPeiSignalPpi;
+extern CONST EFI_PEI_PPI_DESCRIPTOR gEndOfPeiSignalPpi;
 
 /**
    This function installs the PPIs that require permanent memory.
@@ -82,6 +83,7 @@ DxeIplFindDxeCore (
   VOID
   );
 
+
 /**
    Main entry point to last PEIM
 
@@ -96,10 +98,12 @@ DxeIplFindDxeCore (
 EFI_STATUS
 EFIAPI
 DxeLoadCore (
-  IN CONST EFI_DXE_IPL_PPI  *This,
-  IN EFI_PEI_SERVICES       **PeiServices,
-  IN EFI_PEI_HOB_POINTERS   HobList
+  IN CONST EFI_DXE_IPL_PPI *This,
+  IN EFI_PEI_SERVICES      **PeiServices,
+  IN EFI_PEI_HOB_POINTERS  HobList
   );
+
+
 
 /**
    Transfers control to DxeCore.
@@ -114,9 +118,11 @@ DxeLoadCore (
 **/
 VOID
 HandOffToDxeCore (
-  IN EFI_PHYSICAL_ADDRESS  DxeCoreEntryPoint,
-  IN EFI_PEI_HOB_POINTERS  HobList
+  IN EFI_PHYSICAL_ADDRESS   DxeCoreEntryPoint,
+  IN EFI_PEI_HOB_POINTERS   HobList
   );
+
+
 
 /**
    Updates the Stack HOB passed to DXE phase.
@@ -130,8 +136,8 @@ HandOffToDxeCore (
 **/
 VOID
 UpdateStackHob (
-  IN EFI_PHYSICAL_ADDRESS  BaseAddress,
-  IN UINT64                Length
+  IN EFI_PHYSICAL_ADDRESS        BaseAddress,
+  IN UINT64                      Length
   );
 
 /**
@@ -191,12 +197,13 @@ UpdateStackHob (
 EFI_STATUS
 EFIAPI
 CustomGuidedSectionExtract (
-  IN CONST  EFI_PEI_GUIDED_SECTION_EXTRACTION_PPI  *This,
-  IN CONST  VOID                                   *InputSection,
-  OUT       VOID                                   **OutputBuffer,
-  OUT       UINTN                                  *OutputSize,
-  OUT       UINT32                                 *AuthenticationStatus
+  IN CONST  EFI_PEI_GUIDED_SECTION_EXTRACTION_PPI *This,
+  IN CONST  VOID                                  *InputSection,
+  OUT       VOID                                  **OutputBuffer,
+  OUT       UINTN                                 *OutputSize,
+  OUT       UINT32                                *AuthenticationStatus
   );
+
 
 /**
    Decompresses a section to the output buffer.
@@ -221,10 +228,10 @@ CustomGuidedSectionExtract (
 EFI_STATUS
 EFIAPI
 Decompress (
-  IN CONST  EFI_PEI_DECOMPRESS_PPI   *This,
-  IN CONST  EFI_COMPRESSION_SECTION  *CompressionSection,
-  OUT       VOID                     **OutputBuffer,
-  OUT       UINTN                    *OutputSize
+  IN CONST  EFI_PEI_DECOMPRESS_PPI  *This,
+  IN CONST  EFI_COMPRESSION_SECTION *CompressionSection,
+  OUT       VOID                    **OutputBuffer,
+  OUT       UINTN                   *OutputSize
   );
 
 #endif

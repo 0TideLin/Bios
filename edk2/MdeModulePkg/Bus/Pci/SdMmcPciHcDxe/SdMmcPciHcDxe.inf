@@ -56,7 +56,6 @@
   BaseLib
   UefiDriverEntryPoint
   DebugLib
-  PcdLib
 
 [Protocols]
   gEdkiiSdMmcOverrideProtocolGuid               ## SOMETIMES_CONSUMES
@@ -69,6 +68,3 @@
 
 [UserExtensions.TianoCore."ExtraFiles"]
   SdMmcPciHcDxeExtra.uni
-
-[Pcd]
-  gEfiMdeModulePkgTokenSpaceGuid.PcdSdMmcGenericTimeoutValue  ## CONSUMES

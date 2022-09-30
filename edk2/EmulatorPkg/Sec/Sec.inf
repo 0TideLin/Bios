@@ -30,6 +30,10 @@
   Ia32/SwitchRam.asm
   Ia32/SwitchRam.S
 
+[Sources.AARCH64]
+  AArch64/TempRam.c
+  AArch64/SwitchRam.S
+
 [Packages]
   MdePkg/MdePkg.dec
   EmulatorPkg/EmulatorPkg.dec

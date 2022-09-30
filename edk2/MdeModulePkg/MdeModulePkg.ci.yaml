@@ -23,9 +23,12 @@
         ],
         ## Both file path and directory path are accepted.
         "IgnoreFiles": [
-            "Library/LzmaCustomDecompressLib",
-            "Library/BrotliCustomDecompressLib",
-            "Universal/RegularExpressionDxe"
+            "Library/BrotliCustomDecompressLib/brotli",
+            "Universal/RegularExpressionDxe/oniguruma",
+            "Library/LzmaCustomDecompressLib/Sdk/DOC",
+            "Library/LzmaCustomDecompressLib/Sdk/C",
+            "Universal/RegularExpressionDxe/OnigurumaUefiPort.h",
+            "Universal/RegularExpressionDxe/OnigurumaUefiPort.c"
         ]
     },
     ## options defined ci/Plugin/CompilerPlugin
@@ -81,7 +84,6 @@
         "IgnoreDuplicates": [
             "gEfiPeiMmAccessPpiGuid=gPeiSmmAccessPpiGuid",
             "gPeiSmmControlPpiGuid=gEfiPeiMmControlPpiGuid",
-            "gEfiPeiMmCommunicationPpiGuid=gEfiPeiSmmCommunicationPpiGuid",
         ]
     },
 

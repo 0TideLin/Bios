@@ -9,18 +9,19 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #ifndef _EFI_PCI_LIB_H_
 #define _EFI_PCI_LIB_H_
 
+
 typedef struct {
-  EFI_HANDLE    Handle;
+  EFI_HANDLE            Handle;
 } EFI_DEVICE_HANDLE_EXTENDED_DATA_PAYLOAD;
 
 typedef struct {
-  UINT32    Bar;
-  UINT16    DevicePathSize;
-  UINT16    ReqResSize;
-  UINT16    AllocResSize;
-  UINT8     *DevicePath;
-  UINT8     *ReqRes;
-  UINT8     *AllocRes;
+  UINT32                             Bar;
+  UINT16                             DevicePathSize;
+  UINT16                             ReqResSize;
+  UINT16                             AllocResSize;
+  UINT8                              *DevicePath;
+  UINT8                              *ReqRes;
+  UINT8                              *AllocRes;
 } EFI_RESOURCE_ALLOC_FAILURE_ERROR_DATA_PAYLOAD;
 
 typedef enum {
@@ -36,7 +37,7 @@ typedef enum {
 **/
 VOID
 GetBackPcCardBar (
-  IN  PCI_IO_DEVICE  *PciIoDevice
+  IN  PCI_IO_DEVICE                  *PciIoDevice
   );
 
 /**
@@ -49,8 +50,8 @@ GetBackPcCardBar (
 **/
 VOID
 RemoveRejectedPciDevices (
-  IN EFI_HANDLE     RootBridgeHandle,
-  IN PCI_IO_DEVICE  *Bridge
+  IN EFI_HANDLE        RootBridgeHandle,
+  IN PCI_IO_DEVICE     *Bridge
   );
 
 /**
@@ -68,7 +69,7 @@ RemoveRejectedPciDevices (
 **/
 EFI_STATUS
 PciHostBridgeResourceAllocator (
-  IN EFI_PCI_HOST_BRIDGE_RESOURCE_ALLOCATION_PROTOCOL  *PciResAlloc
+  IN EFI_PCI_HOST_BRIDGE_RESOURCE_ALLOCATION_PROTOCOL *PciResAlloc
   );
 
 /**
@@ -86,10 +87,10 @@ PciHostBridgeResourceAllocator (
 **/
 EFI_STATUS
 PciAllocateBusNumber (
-  IN PCI_IO_DEVICE  *Bridge,
-  IN UINT8          StartBusNumber,
-  IN UINT8          NumberOfBuses,
-  OUT UINT8         *NextBusNumber
+  IN PCI_IO_DEVICE                      *Bridge,
+  IN UINT8                              StartBusNumber,
+  IN UINT8                              NumberOfBuses,
+  OUT UINT8                             *NextBusNumber
   );
 
 /**
@@ -108,10 +109,10 @@ PciAllocateBusNumber (
 **/
 EFI_STATUS
 PciScanBus (
-  IN PCI_IO_DEVICE  *Bridge,
-  IN UINT8          StartBusNumber,
-  OUT UINT8         *SubBusNumber,
-  OUT UINT8         *PaddedBusRange
+  IN PCI_IO_DEVICE                      *Bridge,
+  IN UINT8                              StartBusNumber,
+  OUT UINT8                             *SubBusNumber,
+  OUT UINT8                             *PaddedBusRange
   );
 
 /**
@@ -125,7 +126,7 @@ PciScanBus (
 **/
 EFI_STATUS
 PciRootBridgeP2CProcess (
-  IN PCI_IO_DEVICE  *Bridge
+  IN PCI_IO_DEVICE *Bridge
   );
 
 /**
@@ -140,7 +141,7 @@ PciRootBridgeP2CProcess (
 **/
 EFI_STATUS
 PciHostBridgeP2CProcess (
-  IN EFI_PCI_HOST_BRIDGE_RESOURCE_ALLOCATION_PROTOCOL  *PciResAlloc
+  IN EFI_PCI_HOST_BRIDGE_RESOURCE_ALLOCATION_PROTOCOL *PciResAlloc
   );
 
 /**
@@ -175,5 +176,4 @@ PciProgramResizableBar (
   IN PCI_IO_DEVICE                *PciIoDevice,
   IN PCI_RESIZABLE_BAR_OPERATION  ResizableBarOp
   );
-
 #endif

@@ -22,7 +22,9 @@ Abstract:
 
 **/
 
+
 #include "WinGop.h"
+
 
 /**
   TODO: Add function description
@@ -34,8 +36,8 @@ Abstract:
 **/
 EFI_STATUS
 GopPrivateCreateQ (
-  IN  GRAPHICS_PRIVATE_DATA  *Private,
-  IN GOP_QUEUE_FIXED         *Queue
+  IN  GRAPHICS_PRIVATE_DATA    *Private,
+  IN GOP_QUEUE_FIXED           *Queue
   )
 {
   InitializeCriticalSection (&Queue->Cs);
@@ -43,6 +45,7 @@ GopPrivateCreateQ (
   Queue->Rear  = 0;
   return EFI_SUCCESS;
 }
+
 
 /**
   TODO: Add function description
@@ -54,8 +57,8 @@ GopPrivateCreateQ (
 **/
 EFI_STATUS
 GopPrivateDestroyQ (
-  IN  GRAPHICS_PRIVATE_DATA  *Private,
-  IN GOP_QUEUE_FIXED         *Queue
+  IN  GRAPHICS_PRIVATE_DATA    *Private,
+  IN GOP_QUEUE_FIXED           *Queue
   )
 {
   Queue->Front = 0;
@@ -63,6 +66,7 @@ GopPrivateDestroyQ (
   DeleteCriticalSection (&Queue->Cs);
   return EFI_SUCCESS;
 }
+
 
 /**
   TODO: Add function description
@@ -76,9 +80,9 @@ GopPrivateDestroyQ (
 **/
 EFI_STATUS
 GopPrivateAddQ (
-  IN  GRAPHICS_PRIVATE_DATA  *Private,
-  IN GOP_QUEUE_FIXED         *Queue,
-  IN EFI_KEY_DATA            *KeyData
+  IN  GRAPHICS_PRIVATE_DATA    *Private,
+  IN GOP_QUEUE_FIXED           *Queue,
+  IN EFI_KEY_DATA              *KeyData
   )
 {
   EnterCriticalSection (&Queue->Cs);
@@ -89,11 +93,12 @@ GopPrivateAddQ (
   }
 
   CopyMem (&Queue->Q[Queue->Rear], KeyData, sizeof (EFI_KEY_DATA));
-  Queue->Rear = (Queue->Rear + 1) % MAX_Q;
+  Queue->Rear           = (Queue->Rear + 1) % MAX_Q;
 
   LeaveCriticalSection (&Queue->Cs);
   return EFI_SUCCESS;
 }
+
 
 /**
   TODO: Add function description
@@ -107,9 +112,9 @@ GopPrivateAddQ (
 **/
 EFI_STATUS
 GopPrivateDeleteQ (
-  IN  GRAPHICS_PRIVATE_DATA  *Private,
-  IN  GOP_QUEUE_FIXED        *Queue,
-  OUT EFI_KEY_DATA           *Key
+  IN  GRAPHICS_PRIVATE_DATA    *Private,
+  IN  GOP_QUEUE_FIXED          *Queue,
+  OUT EFI_KEY_DATA             *Key
   )
 {
   EnterCriticalSection (&Queue->Cs);
@@ -120,9 +125,9 @@ GopPrivateDeleteQ (
   }
 
   CopyMem (Key, &Queue->Q[Queue->Front], sizeof (EFI_KEY_DATA));
-  Queue->Front = (Queue->Front + 1) % MAX_Q;
+  Queue->Front  = (Queue->Front + 1) % MAX_Q;
 
-  if ((Key->Key.ScanCode == SCAN_NULL) && (Key->Key.UnicodeChar == CHAR_NULL)) {
+  if (Key->Key.ScanCode == SCAN_NULL && Key->Key.UnicodeChar == CHAR_NULL) {
     if (!Private->IsPartialKeySupport) {
       //
       // If partial keystrok is not enabled, don't return the partial keystroke.
@@ -132,10 +137,10 @@ GopPrivateDeleteQ (
       return EFI_NOT_READY;
     }
   }
-
   LeaveCriticalSection (&Queue->Cs);
   return EFI_SUCCESS;
 }
+
 
 /**
   TODO: Add function description
@@ -148,7 +153,7 @@ GopPrivateDeleteQ (
 **/
 EFI_STATUS
 GopPrivateCheckQ (
-  IN  GOP_QUEUE_FIXED  *Queue
+  IN  GOP_QUEUE_FIXED     *Queue
   )
 {
   if (Queue->Front == Queue->Rear) {
@@ -166,8 +171,8 @@ GopPrivateCheckQ (
 **/
 VOID
 InitializeKeyState (
-  IN  GRAPHICS_PRIVATE_DATA  *Private,
-  IN  EFI_KEY_STATE          *KeyState
+  IN  GRAPHICS_PRIVATE_DATA    *Private,
+  IN  EFI_KEY_STATE            *KeyState
   )
 {
   KeyState->KeyShiftState  = EFI_SHIFT_STATE_VALID;
@@ -177,57 +182,44 @@ InitializeKeyState (
   // Record Key shift state and toggle state
   //
   if (Private->LeftCtrl) {
-    KeyState->KeyShiftState |= EFI_LEFT_CONTROL_PRESSED;
+    KeyState->KeyShiftState  |= EFI_LEFT_CONTROL_PRESSED;
   }
-
   if (Private->RightCtrl) {
-    KeyState->KeyShiftState |= EFI_RIGHT_CONTROL_PRESSED;
+    KeyState->KeyShiftState  |= EFI_RIGHT_CONTROL_PRESSED;
   }
-
   if (Private->LeftAlt) {
-    KeyState->KeyShiftState |= EFI_LEFT_ALT_PRESSED;
+    KeyState->KeyShiftState  |= EFI_LEFT_ALT_PRESSED;
   }
-
   if (Private->RightAlt) {
-    KeyState->KeyShiftState |= EFI_RIGHT_ALT_PRESSED;
+    KeyState->KeyShiftState  |= EFI_RIGHT_ALT_PRESSED;
   }
-
   if (Private->LeftShift) {
-    KeyState->KeyShiftState |= EFI_LEFT_SHIFT_PRESSED;
+    KeyState->KeyShiftState  |= EFI_LEFT_SHIFT_PRESSED;
   }
-
   if (Private->RightShift) {
-    KeyState->KeyShiftState |= EFI_RIGHT_SHIFT_PRESSED;
+    KeyState->KeyShiftState  |= EFI_RIGHT_SHIFT_PRESSED;
   }
-
   if (Private->LeftLogo) {
-    KeyState->KeyShiftState |= EFI_LEFT_LOGO_PRESSED;
+    KeyState->KeyShiftState  |= EFI_LEFT_LOGO_PRESSED;
   }
-
   if (Private->RightLogo) {
-    KeyState->KeyShiftState |= EFI_RIGHT_LOGO_PRESSED;
+    KeyState->KeyShiftState  |= EFI_RIGHT_LOGO_PRESSED;
   }
-
   if (Private->Menu) {
-    KeyState->KeyShiftState |= EFI_MENU_KEY_PRESSED;
+    KeyState->KeyShiftState  |= EFI_MENU_KEY_PRESSED;
   }
-
   if (Private->SysReq) {
-    KeyState->KeyShiftState |= EFI_SYS_REQ_PRESSED;
+    KeyState->KeyShiftState  |= EFI_SYS_REQ_PRESSED;
   }
-
   if (Private->CapsLock) {
     KeyState->KeyToggleState |= EFI_CAPS_LOCK_ACTIVE;
   }
-
   if (Private->NumLock) {
     KeyState->KeyToggleState |= EFI_NUM_LOCK_ACTIVE;
   }
-
   if (Private->ScrollLock) {
     KeyState->KeyToggleState |= EFI_SCROLL_LOCK_ACTIVE;
   }
-
   if (Private->IsPartialKeySupport) {
     KeyState->KeyToggleState |= EFI_KEY_STATE_EXPOSED;
   }
@@ -249,7 +241,7 @@ GopPrivateAddKey (
   IN  EFI_INPUT_KEY          Key
   )
 {
-  EFI_KEY_DATA  KeyData;
+  EFI_KEY_DATA            KeyData;
 
   KeyData.Key = Key;
   InitializeKeyState (Private, &KeyData.KeyState);
@@ -259,8 +251,7 @@ GopPrivateAddKey (
   //
   if ((Private->LeftCtrl || Private->RightCtrl) &&
       (KeyData.Key.UnicodeChar >= 1) && (KeyData.Key.UnicodeChar <= 26)
-      )
-  {
+     ) {
     if ((Private->LeftShift || Private->RightShift) == Private->CapsLock) {
       KeyData.Key.UnicodeChar = (CHAR16)(KeyData.Key.UnicodeChar + L'a' - 1);
     } else {
@@ -273,8 +264,7 @@ GopPrivateAddKey (
   //
   if (((KeyData.Key.UnicodeChar >= L'a') && (KeyData.Key.UnicodeChar <= L'z')) ||
       ((KeyData.Key.UnicodeChar >= L'A') && (KeyData.Key.UnicodeChar <= L'Z'))
-      )
-  {
+     ) {
     KeyData.KeyState.KeyShiftState &= ~(EFI_LEFT_SHIFT_PRESSED | EFI_RIGHT_SHIFT_PRESSED);
   }
 
@@ -286,26 +276,26 @@ GopPrivateAddKey (
   return EFI_SUCCESS;
 }
 
+
 EFI_STATUS
 EFIAPI
 WinNtWndCheckKey (
-  IN  EMU_GRAPHICS_WINDOW_PROTOCOL  *GraphicsIo
+  IN  EMU_GRAPHICS_WINDOW_PROTOCOL *GraphicsIo
   )
 {
-  GRAPHICS_PRIVATE_DATA  *Private;
+  GRAPHICS_PRIVATE_DATA           *Private;
 
   Private = GRAPHICS_PRIVATE_DATA_FROM_THIS (GraphicsIo);
 
   return GopPrivateCheckQ (&Private->QueueForRead);
-}
 
+}
 EFI_STATUS
 EFIAPI
 WinNtWndGetKey (
   IN  EMU_GRAPHICS_WINDOW_PROTOCOL  *GraphicsIo,
   IN  EFI_KEY_DATA                  *KeyData
   )
-
 /*++
 
   Routine Description:
@@ -326,15 +316,15 @@ WinNtWndGetKey (
 
 --*/
 {
-  EFI_STATUS             Status;
-  GRAPHICS_PRIVATE_DATA  *Private;
+  EFI_STATUS                      Status;
+  GRAPHICS_PRIVATE_DATA           *Private;
 
   Private = GRAPHICS_PRIVATE_DATA_FROM_THIS (GraphicsIo);
 
   ZeroMem (&KeyData->Key, sizeof (KeyData->Key));
   InitializeKeyState (Private, &KeyData->KeyState);
 
-  Status = GopPrivateCheckQ (&Private->QueueForRead);
+  Status  = GopPrivateCheckQ (&Private->QueueForRead);
   if (!EFI_ERROR (Status)) {
     //
     // If a Key press exists try and read it.
@@ -346,7 +336,7 @@ WinNtWndGetKey (
       // EFI_NOT_READY.
       //
       if (!Private->IsPartialKeySupport) {
-        if ((KeyData->Key.ScanCode == SCAN_NULL) && (KeyData->Key.UnicodeChar == CHAR_NULL)) {
+        if (KeyData->Key.ScanCode == SCAN_NULL && KeyData->Key.UnicodeChar == CHAR_NULL) {
           Status = EFI_NOT_READY;
         }
       }
@@ -354,53 +344,51 @@ WinNtWndGetKey (
   }
 
   return Status;
+
 }
 
 EFI_STATUS
 EFIAPI
 WinNtWndKeySetState (
-  IN EMU_GRAPHICS_WINDOW_PROTOCOL  *GraphicsIo,
-  IN EFI_KEY_TOGGLE_STATE          *KeyToggleState
+  IN EMU_GRAPHICS_WINDOW_PROTOCOL   *GraphicsIo,
+  IN EFI_KEY_TOGGLE_STATE           *KeyToggleState
   )
 {
-  GRAPHICS_PRIVATE_DATA  *Private;
+  GRAPHICS_PRIVATE_DATA           *Private;
 
-  Private                      = GRAPHICS_PRIVATE_DATA_FROM_THIS (GraphicsIo);
-  Private->ScrollLock          = FALSE;
-  Private->NumLock             = FALSE;
-  Private->CapsLock            = FALSE;
+  Private = GRAPHICS_PRIVATE_DATA_FROM_THIS (GraphicsIo);
+  Private->ScrollLock = FALSE;
+  Private->NumLock = FALSE;
+  Private->CapsLock = FALSE;
   Private->IsPartialKeySupport = FALSE;
 
   if ((*KeyToggleState & EFI_SCROLL_LOCK_ACTIVE) == EFI_SCROLL_LOCK_ACTIVE) {
     Private->ScrollLock = TRUE;
   }
-
   if ((*KeyToggleState & EFI_NUM_LOCK_ACTIVE) == EFI_NUM_LOCK_ACTIVE) {
     Private->NumLock = TRUE;
   }
-
   if ((*KeyToggleState & EFI_CAPS_LOCK_ACTIVE) == EFI_CAPS_LOCK_ACTIVE) {
     Private->CapsLock = TRUE;
   }
-
   if ((*KeyToggleState & EFI_KEY_STATE_EXPOSED) == EFI_KEY_STATE_EXPOSED) {
     Private->IsPartialKeySupport = TRUE;
   }
-
   Private->KeyState.KeyToggleState = *KeyToggleState;
   return EFI_SUCCESS;
 }
 
+
 EFI_STATUS
 EFIAPI
 WinNtWndRegisterKeyNotify (
-  IN EMU_GRAPHICS_WINDOW_PROTOCOL                      *GraphicsIo,
-  IN EMU_GRAPHICS_WINDOW_REGISTER_KEY_NOTIFY_CALLBACK  MakeCallBack,
-  IN EMU_GRAPHICS_WINDOW_REGISTER_KEY_NOTIFY_CALLBACK  BreakCallBack,
-  IN VOID                                              *Context
+  IN EMU_GRAPHICS_WINDOW_PROTOCOL                        *GraphicsIo,
+  IN EMU_GRAPHICS_WINDOW_REGISTER_KEY_NOTIFY_CALLBACK    MakeCallBack,
+  IN EMU_GRAPHICS_WINDOW_REGISTER_KEY_NOTIFY_CALLBACK    BreakCallBack,
+  IN VOID                                                *Context
   )
 {
-  GRAPHICS_PRIVATE_DATA  *Private;
+  GRAPHICS_PRIVATE_DATA           *Private;
 
   Private = GRAPHICS_PRIVATE_DATA_FROM_THIS (GraphicsIo);
 
@@ -414,10 +402,10 @@ WinNtWndRegisterKeyNotify (
 EFI_STATUS
 EFIAPI
 WinNtWndCheckPointer (
-  IN  EMU_GRAPHICS_WINDOW_PROTOCOL  *GraphicsIo
+  IN  EMU_GRAPHICS_WINDOW_PROTOCOL *GraphicsIo
   )
 {
-  GRAPHICS_PRIVATE_DATA  *Private;
+  GRAPHICS_PRIVATE_DATA           *Private;
 
   Private = GRAPHICS_PRIVATE_DATA_FROM_THIS (GraphicsIo);
 
@@ -435,7 +423,7 @@ WinNtWndGetPointerState (
   IN  EFI_SIMPLE_POINTER_STATE      *State
   )
 {
-  GRAPHICS_PRIVATE_DATA  *Private;
+  GRAPHICS_PRIVATE_DATA           *Private;
 
   Private = GRAPHICS_PRIVATE_DATA_FROM_THIS (GraphicsIo);
 
