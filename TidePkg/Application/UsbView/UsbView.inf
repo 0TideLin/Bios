@@ -1,0 +1,35 @@
+[Defines]
+  INF_VERSION           = 0x00010005
+  BASE_NAME             = UsbView
+  FILE_GUID             = be84d169-695b-4cd1-8005-be64f20c79c4
+  MODULE_TYPE           = UEFI_APPLICATION
+  VERSION_STRING        = 1.0
+  ENTRY_POINT           = UsbViewMain
+  
+[Sources]
+  UsbView.c
+  UsbView.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+  ShellPkg/ShellPkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+
+[LibraryClasses]
+  MemoryAllocationLib
+  BaseLib
+  UefiLib
+  UefiBootServicesTableLib
+  UefiApplicationEntryPoint
+  BaseMemoryLib
+  DebugLib
+  ReportStatusCodeLib
+  ShellLib
+
+[Guids]
+
+[Protocols]
+  gEfiPciIoProtocolGuid
+  gEfiUsb2HcProtocolGuid
+  gEfiUsbIoProtocolGuid
+  gEfiUsbHcProtocolGuid

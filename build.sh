@@ -9,13 +9,14 @@ function ExportBuildEnv()
   #
   #edk2的build工具需要这两个PATH才能在这里调用
   #
-  export PACKAGES_PATH=$PWD/edk2:$PWD/TidePkg
+  export PACKAGES_PATH=$PWD/edk2:$PWD/TidePkg:$PWD/edk2-libc
   export EDK_TOOLS_PATH=$WORKSPACE/edk2/BaseTools
 
   #
   #iasl工具
   #
   export IASL_PREFIX=$PWD/TidePkg/ToolChain/acpica/  
+
 
   echo WORKSPACE:$WORKSPACE
   echo PACKAGES_PATH:$PACKAGES_PATH
@@ -43,9 +44,9 @@ function BuildCode()
     echo using prebuilt tools
   fi
   echo $@
-  if [ "$@" == "clean" ];then
+  if [[ "$@" == "clean" ]];then
     build clean
-  elif [ "$@" == "cleanall"];then
+  elif [[ "$@" == "cleanall" ]];then
     build cleanall
   else
     #选择编译的包或者模块
