@@ -25,7 +25,6 @@
   DebugLib
   ReportStatusCodeLib
   ShellLib
-
 [Guids]
 
 [Protocols]
