@@ -45,9 +45,9 @@ function BuildCode()
   fi
   echo $@
   if [[ "$@" == "clean" ]];then
-    build clean
+    build -p $WORKSPACE/TidePkg/TidePkg.dsc  -a AARCH64 -t GCC5 clean
   elif [[ "$@" == "cleanall" ]];then
-    build cleanall
+    build -p $WORKSPACE/TidePkg/TidePkg.dsc  -a AARCH64 -t GCC5 cleanall
   else
     #选择编译的包或者模块
     build -p $WORKSPACE/TidePkg/TidePkg.dsc  -a AARCH64 -t GCC5

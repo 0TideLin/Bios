@@ -1,20 +1,14 @@
 [Defines]
   INF_VERSION           = 0x00010005
-  BASE_NAME             = UsbView
-  FILE_GUID             = be84d169-695b-4cd1-8005-be64f20c79c4
+  BASE_NAME             = PciRead
+  FILE_GUID             = b72ba24f-381a-40e2-8003-5097bacf681a
   MODULE_TYPE           = UEFI_APPLICATION
   VERSION_STRING        = 1.0
-  ENTRY_POINT           = UsbViewMain
+  ENTRY_POINT           = PciReadMain
   
 [Sources]
-  UsbView.c
-  UsbView.h
-  UsbHub.h
-  UsbBus.h
-  UsbUtility.h
-  UsbDesc.h
-  UsbEnumer.h
-  Usbids.h
+  PciRead.c
+
 [Packages]
   MdePkg/MdePkg.dec
   ShellPkg/ShellPkg.dec
@@ -30,12 +24,8 @@
   DebugLib
   ReportStatusCodeLib
   ShellLib
+  IoLib
+
 [Guids]
 
 [Protocols]
-  gEfiPciIoProtocolGuid
-  gEfiUsb2HcProtocolGuid
-  gEfiUsbIoProtocolGuid
-  gEfiUsbHcProtocolGuid
-  gEfiDevicePathToTextProtocolGuid
-  gEfiPciRootBridgeIoProtocolGuid

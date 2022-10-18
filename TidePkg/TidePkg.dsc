@@ -63,6 +63,8 @@
 	ShellLib|ShellPkg/Library/UefiShellLib/UefiShellLib.inf
 	FileHandleLib|MdePkg/Library/UefiFileHandleLib/UefiFileHandleLib.inf
 	SortLib|MdeModulePkg/Library/UefiSortLib/UefiSortLib.inf
+	IoLib|MdePkg/Library/BaseIoLibIntrinsic/BaseIoLibIntrinsic.inf
+	RegisterFilterLib|MdePkg/Library/RegisterFilterLibNull/RegisterFilterLibNull.inf
 
 ########################################################################################
 #Components
@@ -80,6 +82,7 @@
 ########################################################################################
 [Components]
 	TidePkg/Application/UsbView/UsbView.inf
+	TidePkg/Application/PciRead/PciRead.inf
 
 [BuildOptions.Common]
 
