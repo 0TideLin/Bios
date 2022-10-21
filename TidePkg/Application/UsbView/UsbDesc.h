@@ -224,4 +224,29 @@ UsbIoClearFeature (
   IN  UINT16              Feature,
   IN  UINT16              Index
   );
+
+  /**
+  Get the standard descriptors.
+
+  @param  UsbDev                The USB device to read descriptor from.
+  @param  DescType              The type of descriptor to read.
+  @param  DescIndex             The index of descriptor to read.
+  @param  LangId                Language ID, only used to get string, otherwise set
+                                it to 0.
+  @param  Buf                   The buffer to hold the descriptor read.
+  @param  Length                The length of the buffer.
+
+  @retval EFI_SUCCESS           The descriptor is read OK.
+  @retval Others                Failed to retrieve the descriptor.
+
+**/
+EFI_STATUS
+UsbCtrlGetDesc (
+  IN  USB_DEVICE          *UsbDev,
+  IN  UINTN               DescType,
+  IN  UINTN               DescIndex,
+  IN  UINT16              LangId,
+  OUT VOID                *Buf,
+  IN  UINTN               Length
+  );
 #endif

@@ -110,6 +110,12 @@ VOID
 EFIAPI
 LsEndpoint(IN USB_VIEW_ENDPOINT_DISPLAY ViewDisplay);
 
+USB_DEVICE *
+UsbFindChild (
+  IN USB_INTERFACE        *HubIf,
+  IN UINT8                Port
+  );
+
 
 
 #endif

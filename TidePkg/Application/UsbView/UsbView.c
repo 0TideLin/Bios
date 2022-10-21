@@ -1,5 +1,317 @@
 #include "UsbView.h"
 
+
+/**
+  Execute a control transfer to the device.
+
+  @param  UsbBus           The USB bus driver.
+  @param  DevAddr          The device address.
+  @param  DevSpeed         The device speed.
+  @param  MaxPacket        Maximum packet size of endpoint 0.
+  @param  Request          The control transfer request.
+  @param  Direction        The direction of data stage.
+  @param  Data             The buffer holding data.
+  @param  DataLength       The length of the data.
+  @param  TimeOut          Timeout (in ms) to wait until timeout.
+  @param  Translator       The transaction translator for low/full speed device.
+  @param  UsbResult        The result of transfer.
+
+  @retval EFI_SUCCESS      The control transfer finished without error.
+  @retval Others           The control transfer failed, reason returned in UsbReslt.
+
+**/
+EFI_STATUS
+UsbHcControlTransfer (
+  IN  USB_BUS                             *UsbBus,
+  IN  UINT8                               DevAddr,
+  IN  UINT8                               DevSpeed,
+  IN  UINTN                               MaxPacket,
+  IN  EFI_USB_DEVICE_REQUEST              *Request,
+  IN  EFI_USB_DATA_DIRECTION              Direction,
+  IN  OUT VOID                            *Data,
+  IN  OUT UINTN                           *DataLength,
+  IN  UINTN                               TimeOut,
+  IN  EFI_USB2_HC_TRANSACTION_TRANSLATOR  *Translator,
+  OUT UINT32                              *UsbResult
+  )
+{
+  EFI_STATUS              Status;
+  BOOLEAN                 IsSlowDevice;
+
+  if (UsbBus->Usb2Hc != NULL) {
+    Status = UsbBus->Usb2Hc->ControlTransfer (
+                               UsbBus->Usb2Hc,
+                               DevAddr,
+                               DevSpeed,
+                               MaxPacket,
+                               Request,
+                               Direction,
+                               Data,
+                               DataLength,
+                               TimeOut,
+                               Translator,
+                               UsbResult
+                               );
+
+  } else {
+    IsSlowDevice = (BOOLEAN)(EFI_USB_SPEED_LOW == DevSpeed);
+    Status = UsbBus->UsbHc->ControlTransfer (
+                              UsbBus->UsbHc,
+                              DevAddr,
+                              IsSlowDevice,
+                              (UINT8) MaxPacket,
+                              Request,
+                              Direction,
+                              Data,
+                              DataLength,
+                              TimeOut,
+                              UsbResult
+                              );
+  }
+
+  return Status;
+}
+
+
+/**
+  USB standard control transfer support routine. This
+  function is used by USB device. It is possible that
+  the device's interfaces are still waiting to be
+  enumerated.
+
+  @param  UsbDev                The usb device.
+  @param  Direction             The direction of data transfer.
+  @param  Type                  Standard / class specific / vendor specific.
+  @param  Target                The receiving target.
+  @param  Request               Which request.
+  @param  Value                 The wValue parameter of the request.
+  @param  Index                 The wIndex parameter of the request.
+  @param  Buf                   The buffer to receive data into / transmit from.
+  @param  Length                The length of the buffer.
+
+  @retval EFI_SUCCESS           The control request is executed.
+  @retval EFI_DEVICE_ERROR      Failed to execute the control transfer.
+
+**/
+EFI_STATUS
+UsbCtrlRequest (
+  IN USB_DEVICE             *UsbDev,
+  IN EFI_USB_DATA_DIRECTION Direction,
+  IN UINTN                  Type,
+  IN UINTN                  Target,
+  IN UINTN                  Request,
+  IN UINT16                 Value,
+  IN UINT16                 Index,
+  IN OUT VOID               *Buf,
+  IN UINTN                  Length
+  )
+{
+  EFI_USB_DEVICE_REQUEST  DevReq;
+  EFI_STATUS              Status;
+  UINT32                  Result;
+  UINTN                   Len;
+
+  ASSERT ((UsbDev != NULL) && (UsbDev->Bus != NULL));
+
+  DevReq.RequestType  = USB_REQUEST_TYPE (Direction, Type, Target);
+  DevReq.Request      = (UINT8) Request;
+  DevReq.Value        = Value;
+  DevReq.Index        = Index;
+  DevReq.Length       = (UINT16) Length;
+
+  Len                 = Length;
+  Status = UsbHcControlTransfer (
+             UsbDev->Bus,
+             UsbDev->Address,
+             UsbDev->Speed,
+             UsbDev->MaxPacket0,
+             &DevReq,
+             Direction,
+             Buf,
+             &Len,
+             USB_GENERAL_DEVICE_REQUEST_TIMEOUT,
+             &UsbDev->Translator,
+             &Result
+             );
+
+  return Status;
+}
+
+
+
+/**
+  Get the standard descriptors.
+
+  @param  UsbDev                The USB device to read descriptor from.
+  @param  DescType              The type of descriptor to read.
+  @param  DescIndex             The index of descriptor to read.
+  @param  LangId                Language ID, only used to get string, otherwise set
+                                it to 0.
+  @param  Buf                   The buffer to hold the descriptor read.
+  @param  Length                The length of the buffer.
+
+  @retval EFI_SUCCESS           The descriptor is read OK.
+  @retval Others                Failed to retrieve the descriptor.
+
+**/
+EFI_STATUS
+UsbCtrlGetDesc (
+  IN  USB_DEVICE          *UsbDev,
+  IN  UINTN               DescType,
+  IN  UINTN               DescIndex,
+  IN  UINT16              LangId,
+  OUT VOID                *Buf,
+  IN  UINTN               Length
+  )
+{
+  EFI_STATUS              Status;
+
+  Status = UsbCtrlRequest (
+             UsbDev,
+             EfiUsbDataIn,
+             USB_REQ_TYPE_STANDARD,
+             USB_TARGET_DEVICE,
+             USB_REQ_GET_DESCRIPTOR,
+             (UINT16) ((DescType << 8) | DescIndex),
+             LangId,
+             Buf,
+             Length
+             );
+
+  return Status;
+}
+
+
+/**
+  Get the device descriptor for the device.
+
+  @param  UsbDev                The Usb device to retrieve descriptor from.
+
+  @retval EFI_SUCCESS           The device descriptor is returned.
+  @retval EFI_OUT_OF_RESOURCES  Failed to allocate memory.
+
+**/
+EFI_STATUS
+UsbGetDevDesc (
+  IN USB_DEVICE           *UsbDev
+  )
+{
+  USB_DEVICE_DESC         *DevDesc;
+  EFI_STATUS              Status;
+
+  DevDesc = AllocateZeroPool (sizeof (USB_DEVICE_DESC));
+
+  if (DevDesc == NULL) {
+    return EFI_OUT_OF_RESOURCES;
+  }
+
+  Status  = UsbCtrlGetDesc (
+              UsbDev,
+              USB_DESC_TYPE_DEVICE,
+              0,
+              0,
+              DevDesc,
+              sizeof (EFI_USB_DEVICE_DESCRIPTOR)
+              );
+
+  if (EFI_ERROR (Status)) {
+    gBS->FreePool (DevDesc);
+  } else {
+    UsbDev->DevDesc = DevDesc;
+  }
+
+  return Status;
+}
+
+VOID
+EFIAPI
+LsDeviceDesc( EFI_USB_DEVICE_DESCRIPTOR Desc)
+{
+  Print(L"Class:%02x,Subclass:%02x,Protocol:%02x,Maxsize0:%02x,Vendor:%04x,Product:%04x\n",
+              Desc.DeviceClass,
+              Desc.DeviceSubClass,
+              Desc.DeviceProtocol,
+              Desc.MaxPacketSize0,
+              Desc.IdVendor,
+              Desc.IdProduct);
+
+  return ;
+}
+
+VOID
+EFIAPI
+LsConfigDesc(EFI_USB_CONFIG_DESCRIPTOR Desc)
+{
+  Print(L" MaxPower:%02x, Attribute:%02x\n",
+                              Desc.MaxPower,
+                              Desc.Attributes);
+}
+
+VOID
+EFIAPI
+LsInterfaceDesc(EFI_USB_INTERFACE_DESCRIPTOR Desc)
+{
+  Print(L"  %02x, Class:%02x, SubClass:%02x, Protocol:%02x, IfNum:%02x\n",
+                      Desc.Interface,
+                      Desc.InterfaceClass,
+                      Desc.InterfaceSubClass,
+                      Desc.InterfaceProtocol,
+                      Desc.InterfaceNumber);
+}
+
+VOID
+EFIAPI
+LsEndpointDesc(USB_INTERFACE_SETTING *Setting)
+{
+  UINT16 Index;
+  for(Index = 0; Index < Setting->Desc.NumEndpoints; Index++)
+  {
+    Print(L"   Endpoint:%d\n", Index);
+    Print(L"   Address:%02x, Interval:%02x, MaxPacketSize:%04x\n",
+                  Setting->Endpoints[Index]->Desc.EndpointAddress,
+                  Setting->Endpoints[Index]->Desc.Interval,
+                  Setting->Endpoints[Index]->Desc.MaxPacketSize);
+  }
+}
+
+VOID
+EFIAPI
+DealChild(USB_DEVICE *Dev)
+{
+  UINT16 Index;
+  USB_DEVICE *Child;
+  for(Index = 0; Index < Dev->NumOfInterface; Index++)
+  {
+    //
+    //It's hub, find child device again
+    //
+    if(Dev->Interfaces[Index]->IsHub)
+    {
+      for (UINT8 ChildIndex = 0; ChildIndex < Dev->Interfaces[Index]->NumOfPort; ChildIndex++)
+      {
+        Child = UsbFindChild(Dev->Interfaces[Index], ChildIndex);
+        if(Child != NULL && Child->DisconnectFail==FALSE)
+        {
+          DealChild(Child);
+        }
+      }
+    }
+
+    Print(L"Tier:%02x\n",Dev->Tier);
+    LsDeviceDesc(Dev->DevDesc->Desc);
+
+    Print(L" Configuration:%02x\n",Dev->ActiveConfig->Desc.ConfigurationValue);
+    LsConfigDesc(Dev->ActiveConfig->Desc);
+
+    Print(L"  Interface:%d\n", Index );
+    LsInterfaceDesc(Dev->Interfaces[Index]->IfSetting->Desc );
+    LsEndpointDesc(Dev->Interfaces[Index]->IfSetting);
+
+  }
+  return ;
+}
+
+
 VOID
 EFIAPI
 LsDevice(IN USB_VIEW_DEVICE_DISPLAY DeviceDisplay)
@@ -261,10 +573,11 @@ UsbViewMain(
   USB_INTERFACE           *UsbIf;
   USB_INTERFACE           *RootIf;
   USB_DEVICE              *RootHub;
-  USB_DEVICE              *UsbDev;
+  // USB_DEVICE              *UsbDev;
   USB_DEVICE              *Child;
   UINT64                  *DeviceAddress;
   USB_VIEW_DEVICE_DISPLAY       DeviceDisplay;
+  EFI_USB_PORT_STATUS     PortStatus;
   // USB_VIEW_CONFIG_DISPLAY       ConfigDisplay;
   // USB_VIEW_INTERFACE_DISPLAY    InterfaceDisplay;
   // USB_VIEW_ENDPOINT_DISPLAY     EndpointDisplay;
@@ -302,6 +615,44 @@ UsbViewMain(
     RootHub = Bus->Devices[0];
     RootIf  = RootHub->Interfaces[0];
 
+    Print(L"Roothub%d\n", Index);
+    //find child device
+    for (UINT8 ChildIndex = 0; ChildIndex < RootIf->NumOfPort; ChildIndex++) {
+
+      Child = UsbFindChild (RootIf, ChildIndex);
+      if(Child != NULL && Child->DisconnectFail == FALSE)
+      {
+
+        RootIf->HubApi->GetPortStatus(RootIf, ChildIndex, &PortStatus);
+        Print(L"Tier:%d\n", RootHub->Tier);
+        Print(L"Port:%d:%04x, %04x\n",Index, PortStatus.PortStatus, PortStatus.PortChangeStatus);
+        DealChild(Child);
+        // Print(L"Index%d: Speed %x, Tier %d \n",ChildIndex, Child->Speed, Child->Tier);
+        // Print(L"class:%x, %x\n", Child->DevDesc->Desc.DeviceClass,Child->DevDesc->Desc.IdVendor);
+        // for(UINT8 InterfaceIndex = 0; InterfaceIndex < Child->NumOfInterface; InterfaceIndex++)
+        // {
+        //   Print(L"IsHub:%x\n", Child->Interfaces[InterfaceIndex]->IsHub);
+        //   if(Child->Interfaces[InterfaceIndex]->IsHub && Child->Interfaces[InterfaceIndex]->IsManaged)
+        //   {
+        //     Print(L"HubPort:%x\n",Child->Interfaces[InterfaceIndex]->NumOfPort);
+        //     for(UINT16 HubChildIndex = 0; HubChildIndex < Child->Interfaces[InterfaceIndex]->NumOfPort; HubChildIndex++)
+        //     {
+        //       HubChild = UsbFindChild(Child->Interfaces[InterfaceIndex], HubChildIndex);
+        //       if(HubChild != NULL && HubChild->DisconnectFail==FALSE)
+        //       {
+        //         Print(L"HubChild:%x, %x\n", HubChild->DevDesc->Desc.DeviceClass, HubChild->DevDesc->Desc.IdVendor);
+        //       }
+        //     }
+
+
+        //   }
+
+        // }
+        // Print(L"\n");
+      }
+
+    }
+    continue;
     DeviceDisplay.IsXhci = TRUE;
     DeviceDisplay.IsHub  = TRUE;
     DeviceDisplay.Address = RootHub->Address;
@@ -344,18 +695,7 @@ UsbViewMain(
 
 
     if(   CheckDeviceExist(RootHub, DeviceAddress) ) continue;
-    //find child device
-    for (Index = 0; Index < RootIf->NumOfPort; Index++) {
 
-      Child = UsbFindChild (RootIf, Index);
-      if(   CheckDeviceExist(Child, DeviceAddress) ) continue;
-
-      if ((Child != NULL) && (Child->DisconnectFail == TRUE)) {
-
-
-      }
-
-    }
 
     LsDevice(DeviceDisplay);
     Print(L"\n");

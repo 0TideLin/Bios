@@ -5,7 +5,7 @@
   MODULE_TYPE           = UEFI_APPLICATION
   VERSION_STRING        = 1.0
   ENTRY_POINT           = UsbViewMain
-  
+
 [Sources]
   UsbView.c
   UsbView.h
