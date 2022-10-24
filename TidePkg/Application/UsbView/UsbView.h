@@ -41,6 +41,7 @@
 
 #define IS_CLASS(a, c) ((a) == (c))
 
+#define DISPLAY_SIZE 100
 
 typedef struct
 {
@@ -74,27 +75,13 @@ typedef struct
 {
   UINT8   NumberOfInterfaces;
   UINT8   Attributes;
-  UINT16  MaxPowerNeed;
+  UINT8   MaxPowerNeed;
 }USB_VIEW_CONFIG_DISPLAY;
 
 VOID
 EFIAPI
 LsConfig(IN USB_VIEW_CONFIG_DISPLAY ConfigDisplay);
 
-typedef struct
-{
-  UINT8   InterfaceNumber;
-  CHAR16* Name;
-  UINT8   AlternateNumber;
-  UINT8   Class;
-  UINT8   SubClass;
-  UINT8   Protocol;
-  UINT8   NumberOfEndpoints;
-}USB_VIEW_INTERFACE_DISPLAY;
-
-VOID
-EFIAPI
-LsInterface(IN USB_VIEW_INTERFACE_DISPLAY InterfaceDisplay);
 
 typedef struct
 {
@@ -105,10 +92,36 @@ typedef struct
   UINT16  MaxPacketSize;
   UINT16  Interval;
 }USB_VIEW_ENDPOINT_DISPLAY;
+typedef struct
+{
+  UINT8   InterfaceNumber;
+  CHAR16* Name;
+  UINT8   AlternateNumber;
+  UINT8   Class;
+  UINT8   SubClass;
+  UINT8   Protocol;
+  UINT8   NumberOfEndpoints;
+  USB_VIEW_ENDPOINT_DISPLAY     *EndpointDisplay;
+}USB_VIEW_INTERFACE_DISPLAY;
+
+VOID
+EFIAPI
+LsInterface(IN USB_VIEW_INTERFACE_DISPLAY InterfaceDisplay);
 
 VOID
 EFIAPI
 LsEndpoint(IN USB_VIEW_ENDPOINT_DISPLAY ViewDisplay);
+
+typedef struct
+{
+  UINT64 AddressMark;
+  UINT16  Parent;
+  USB_VIEW_DEVICE_DISPLAY       DeviceDisplay;
+  USB_VIEW_CONFIG_DISPLAY       ConfigDisplay;
+  USB_VIEW_INTERFACE_DISPLAY    *InterfaceDisplay;
+}USB_VIEW_DISPLAY;
+
+
 
 USB_DEVICE *
 UsbFindChild (
@@ -116,6 +129,20 @@ UsbFindChild (
   IN UINT8                Port
   );
 
+VOID
+EFIAPI
+InitUsbViewDispaly();
 
+USB_VIEW_DISPLAY *
+EFIAPI
+FindUsbViewDisplay(UINT64 AddressMark);
+
+VOID
+EFIAPI
+SetUsbViewDispaly(USB_VIEW_DISPLAY *UsbViewDisplay, UINT16 ParentIndex);
+
+VOID
+EFIAPI
+PrintMessage( USB_VIEW_DISPLAY *UsbViewDisplayPt);
 
 #endif

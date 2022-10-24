@@ -1,6 +1,73 @@
 #include "UsbView.h"
 
+USB_VIEW_DISPLAY        UsbViewDisplayArray[DISPLAY_SIZE];
 
+
+VOID
+EFIAPI
+InitUsbViewDispaly()
+{
+  USB_VIEW_DISPLAY        *UsbViewDisplayArrayPt;
+  UsbViewDisplayArrayPt = UsbViewDisplayArray;
+  for(UINT16 Index = 0; Index < DISPLAY_SIZE; Index++)
+  {
+    UsbViewDisplayArrayPt->Parent = Index;
+    UsbViewDisplayArrayPt->AddressMark = 0;
+    UsbViewDisplayArrayPt++;
+  }
+  return;
+}
+
+
+USB_VIEW_DISPLAY *
+EFIAPI
+FindUsbViewDisplay(UINT64 AddressMark)
+{
+  USB_VIEW_DISPLAY        *UsbViewDisplayArrayPt;
+  UsbViewDisplayArrayPt = UsbViewDisplayArray;
+  for(UINT16 Index = 0; Index < DISPLAY_SIZE; Index++)
+  {
+    if(UsbViewDisplayArrayPt->AddressMark == AddressMark)
+    {
+      return NULL;
+    }
+    if(UsbViewDisplayArrayPt->AddressMark == 0)
+    {
+      UsbViewDisplayArrayPt->AddressMark = AddressMark;
+      return UsbViewDisplayArrayPt;
+    }
+    UsbViewDisplayArrayPt ++;
+  }
+  return NULL;
+}
+
+VOID
+EFIAPI
+FindUsbViewChild(UINT16 ParentIndex)
+{
+  UINT16 Index;
+  USB_VIEW_DISPLAY        *UsbViewDisplayArrayPt;
+  UsbViewDisplayArrayPt = UsbViewDisplayArray;
+  for(Index = 0; Index < DISPLAY_SIZE; Index++)
+  {
+    if(UsbViewDisplayArrayPt[Index].Parent == Index)continue;
+    if(UsbViewDisplayArrayPt[Index].Parent == ParentIndex && UsbViewDisplayArrayPt[Index].AddressMark != 0)
+    {
+      PrintMessage(&UsbViewDisplayArrayPt[Index]);
+      FindUsbViewChild(Index);
+    }
+    if(UsbViewDisplayArrayPt[Index].AddressMark == 0)break;
+  }
+  return ;
+}
+
+VOID
+EFIAPI
+SetUsbViewDispaly(USB_VIEW_DISPLAY *UsbViewDisplay, UINT16 ParentIndex)
+{
+  UsbViewDisplay->Parent = ParentIndex;
+  return ;
+}
 /**
   Execute a control transfer to the device.
 
@@ -223,63 +290,166 @@ UsbGetDevDesc (
   return Status;
 }
 
+/**
+  Retrieve the indexed string for the language. It requires two
+  steps to get a string, first to get the string's length. Then
+  the string itself.
+
+  @param  UsbDev                The usb device.
+  @param  Index                 The index the string to retrieve.
+  @param  LangId                Language ID.
+
+  @return The created string descriptor or NULL.
+
+**/
+EFI_USB_STRING_DESCRIPTOR *
+UsbGetOneString (
+  IN     USB_DEVICE       *UsbDev,
+  IN     UINT8            Index,
+  IN     UINT16           LangId
+  )
+{
+  EFI_USB_STRING_DESCRIPTOR Desc;
+  EFI_STATUS                Status;
+  UINT8                     *Buf;
+
+  //
+  // First get two bytes which contains the string length.
+  //
+  Status = UsbCtrlGetDesc (UsbDev, USB_DESC_TYPE_STRING, Index, LangId, &Desc, 2);
+
+  //
+  // Reject if Length even cannot cover itself, or odd because Unicode string byte length should be even.
+  //
+  if (EFI_ERROR (Status) ||
+      (Desc.Length < OFFSET_OF (EFI_USB_STRING_DESCRIPTOR, Length) + sizeof (Desc.Length)) ||
+      (Desc.Length % 2 != 0)
+    ) {
+    return NULL;
+  }
+
+  Buf = AllocateZeroPool (Desc.Length);
+
+  if (Buf == NULL) {
+    return NULL;
+  }
+
+  Status = UsbCtrlGetDesc (
+             UsbDev,
+             USB_DESC_TYPE_STRING,
+             Index,
+             LangId,
+             Buf,
+             Desc.Length
+             );
+
+  if (EFI_ERROR (Status)) {
+    FreePool (Buf);
+    return NULL;
+  }
+
+  return (EFI_USB_STRING_DESCRIPTOR *) Buf;
+}
+
+
 VOID
 EFIAPI
-LsDeviceDesc( EFI_USB_DEVICE_DESCRIPTOR Desc)
+LsDeviceDesc(USB_VIEW_DISPLAY *UsbViewDisplay, EFI_USB_DEVICE_DESCRIPTOR Desc)
 {
-  Print(L"Class:%02x,Subclass:%02x,Protocol:%02x,Maxsize0:%02x,Vendor:%04x,Product:%04x\n",
-              Desc.DeviceClass,
-              Desc.DeviceSubClass,
-              Desc.DeviceProtocol,
-              Desc.MaxPacketSize0,
-              Desc.IdVendor,
-              Desc.IdProduct);
+  UsbViewDisplay->DeviceDisplay.DeviceClass     = Desc.DeviceClass;
+  UsbViewDisplay->DeviceDisplay.DeviceSubClass  = Desc.DeviceSubClass;
+  UsbViewDisplay->DeviceDisplay.DeviceProtocol  = Desc.DeviceProtocol;
+  UsbViewDisplay->DeviceDisplay.MaximumDefaultEndpointSize = Desc.MaxPacketSize0;
+  UsbViewDisplay->DeviceDisplay.VendorId        = Desc.IdVendor;
+  UsbViewDisplay->DeviceDisplay.ProductId       = Desc.IdProduct;
+  UsbViewDisplay->DeviceDisplay.UsbVersion      = Desc.BcdUSB;
+  UsbViewDisplay->DeviceDisplay.NumberOfConfigurations = Desc.NumConfigurations;
+
+  // Print(L"Class:%02x,Subclass:%02x,Protocol:%02x,Maxsize0:%02x,Vendor:%04x,Product:%04x\n",
+  //             Desc.DeviceClass,
+  //             Desc.DeviceSubClass,
+  //             Desc.DeviceProtocol,
+  //             Desc.MaxPacketSize0,
+  //             Desc.IdVendor,
+  //             Desc.IdProduct);
 
   return ;
 }
 
 VOID
 EFIAPI
-LsConfigDesc(EFI_USB_CONFIG_DESCRIPTOR Desc)
+LsConfigDesc(USB_VIEW_DISPLAY *UsbViewDisplayPt,  EFI_USB_CONFIG_DESCRIPTOR Desc)
 {
-  Print(L" MaxPower:%02x, Attribute:%02x\n",
-                              Desc.MaxPower,
-                              Desc.Attributes);
+  UsbViewDisplayPt->ConfigDisplay.MaxPowerNeed = Desc.MaxPower;
+  UsbViewDisplayPt->ConfigDisplay.Attributes   = Desc.Attributes;
+  UsbViewDisplayPt->ConfigDisplay.NumberOfInterfaces = Desc.NumInterfaces;
+
+  // Print(L" MaxPower:%02x, Attribute:%02x\n",
+  //                             Desc.MaxPower,
+  //                             Desc.Attributes);
 }
 
 VOID
 EFIAPI
-LsInterfaceDesc(EFI_USB_INTERFACE_DESCRIPTOR Desc)
+LsEndpointDesc(USB_VIEW_ENDPOINT_DISPLAY *EndpointDisplayPt, USB_ENDPOINT_DESC *Desc)
 {
-  Print(L"  %02x, Class:%02x, SubClass:%02x, Protocol:%02x, IfNum:%02x\n",
-                      Desc.Interface,
-                      Desc.InterfaceClass,
-                      Desc.InterfaceSubClass,
-                      Desc.InterfaceProtocol,
-                      Desc.InterfaceNumber);
+  EndpointDisplayPt->Address      = Desc->Desc.EndpointAddress;
+  EndpointDisplayPt->Attribute    = Desc->Desc.Attributes;
+  // EndpointDisplayPt->Direction    = Desc->Desc
+  EndpointDisplayPt->Interval     = Desc->Desc.Interval;
+  EndpointDisplayPt->MaxPacketSize= Desc->Desc.MaxPacketSize;
+  EndpointDisplayPt->Type         = Desc->Desc.DescriptorType;
+
+  return ;
 }
+
 
 VOID
 EFIAPI
-LsEndpointDesc(USB_INTERFACE_SETTING *Setting)
+LsInterfaceDesc(USB_VIEW_INTERFACE_DISPLAY *InterfaceDisplayPt, USB_INTERFACE_SETTING  *IfSetting)
 {
   UINT16 Index;
-  for(Index = 0; Index < Setting->Desc.NumEndpoints; Index++)
+  InterfaceDisplayPt->Class              = IfSetting->Desc.InterfaceClass;
+  InterfaceDisplayPt->SubClass           = IfSetting->Desc.InterfaceSubClass;
+  InterfaceDisplayPt->Protocol           = IfSetting->Desc.InterfaceProtocol;
+  InterfaceDisplayPt->AlternateNumber    = IfSetting->Desc.AlternateSetting;
+  InterfaceDisplayPt->NumberOfEndpoints  = IfSetting->Desc.NumEndpoints;
+  InterfaceDisplayPt->InterfaceNumber    = IfSetting->Desc.InterfaceNumber;
+
+  InterfaceDisplayPt->EndpointDisplay = AllocatePool(sizeof(USB_VIEW_ENDPOINT_DISPLAY) * IfSetting->Desc.NumEndpoints );
+  for(Index = 0; Index < IfSetting->Desc.NumEndpoints; Index++)
   {
-    Print(L"   Endpoint:%d\n", Index);
-    Print(L"   Address:%02x, Interval:%02x, MaxPacketSize:%04x\n",
-                  Setting->Endpoints[Index]->Desc.EndpointAddress,
-                  Setting->Endpoints[Index]->Desc.Interval,
-                  Setting->Endpoints[Index]->Desc.MaxPacketSize);
+    LsEndpointDesc(&InterfaceDisplayPt->EndpointDisplay[Index] , IfSetting->Endpoints[Index]);
   }
+
+  return ;
 }
+
+
 
 VOID
 EFIAPI
-DealChild(USB_DEVICE *Dev)
+DealChild(USB_DEVICE *Dev, UINT16 ParentIndex)
 {
   UINT16 Index;
+  UINT16  UsbViewIndex;
   USB_DEVICE *Child;
+  USB_VIEW_DISPLAY *UsbViewDisplayPt;
+
+  UsbViewDisplayPt = FindUsbViewDisplay( (UINT64)Dev );
+  if(UsbViewDisplayPt == NULL)
+  {
+    return;
+  }
+  UsbViewIndex = UsbViewDisplayPt->Parent;
+
+  SetUsbViewDispaly(UsbViewDisplayPt, ParentIndex);
+  LsDeviceDesc(UsbViewDisplayPt, Dev->DevDesc->Desc);
+
+  // Print(L" Configuration:%02x\n",Dev->ActiveConfig->Desc.ConfigurationValue);
+  LsConfigDesc(UsbViewDisplayPt ,Dev->ActiveConfig->Desc);
+
+  UsbViewDisplayPt->InterfaceDisplay = AllocatePool( sizeof(USB_VIEW_INTERFACE_DISPLAY) * Dev->NumOfInterface );
   for(Index = 0; Index < Dev->NumOfInterface; Index++)
   {
     //
@@ -292,50 +462,19 @@ DealChild(USB_DEVICE *Dev)
         Child = UsbFindChild(Dev->Interfaces[Index], ChildIndex);
         if(Child != NULL && Child->DisconnectFail==FALSE)
         {
-          DealChild(Child);
+          DealChild(Child, UsbViewIndex);
         }
       }
     }
 
-    Print(L"Tier:%02x\n",Dev->Tier);
-    LsDeviceDesc(Dev->DevDesc->Desc);
+    LsInterfaceDesc(&UsbViewDisplayPt->InterfaceDisplay[Index], Dev->Interfaces[Index]->IfSetting);
 
-    Print(L" Configuration:%02x\n",Dev->ActiveConfig->Desc.ConfigurationValue);
-    LsConfigDesc(Dev->ActiveConfig->Desc);
-
-    Print(L"  Interface:%d\n", Index );
-    LsInterfaceDesc(Dev->Interfaces[Index]->IfSetting->Desc );
-    LsEndpointDesc(Dev->Interfaces[Index]->IfSetting);
 
   }
   return ;
 }
 
 
-VOID
-EFIAPI
-LsDevice(IN USB_VIEW_DEVICE_DISPLAY DeviceDisplay)
-{
-  Print(L"---------------------------------\n");
-  Print(L"Manufacturer: %s\n",DeviceDisplay.Manufacturer);
-  Print(L"Serial Number: %s\n", DeviceDisplay.SerialNumber);
-  Print(L"Speed: 0x%02x\n", DeviceDisplay.Speed);
-  Print(L"Bus: %x\n", DeviceDisplay.Bus);
-  Print(L"Address: %02x\n", DeviceDisplay.Address);
-  Print(L"Number of Ports: %02x\n", DeviceDisplay.NumberOfPort);
-  Print(L"Bandwidth allocated: %02x\n", DeviceDisplay.BandWidthAllocated);
-  Print(L"Usb Version: %04x\n", DeviceDisplay.UsbVersion);
-  Print(L"Device Class: %02x\n", DeviceDisplay.DeviceClass);
-  Print(L"Device SubClass: %02x\n", DeviceDisplay.DeviceSubClass);
-  Print(L"Device Protocol:  %02x\n", DeviceDisplay.DeviceProtocol);
-  Print(L"Maximum Default Endpoint Size: %02x\n", DeviceDisplay.MaximumDefaultEndpointSize);
-  Print(L"Number of Configureations: %02x\n", DeviceDisplay.NumberOfConfigurations);
-  Print(L"Vendor Id: %04x\n", DeviceDisplay.VendorId);
-  Print(L"Product Id: %04x\n", DeviceDisplay.ProductId);
-  Print(L"Revision Number: %04x\n", DeviceDisplay.RevisionNumber);
-  Print(L"---------------------------------\n");
-  return ;
-}
 
 /**
   Find the child device on the hub's port.
@@ -374,179 +513,70 @@ UsbFindChild (
   return NULL;
 }
 
-BOOLEAN
+VOID
 EFIAPI
-CheckDeviceExist(USB_DEVICE *RootHub, UINT64  *DeviceAddress)
+PrintMessage( USB_VIEW_DISPLAY *UsbViewDisplayPt)
 {
-  UINT64 Address;
-  Address = (UINT64)RootHub;
-  Print(L"%016x\n", Address);
-  if(*DeviceAddress == 0)
+  USB_VIEW_INTERFACE_DISPLAY *InterfaceDisplayPt;
+  USB_VIEW_ENDPOINT_DISPLAY  *EndpointDisplayPt;
+  Print(L"Class:%02x\nSubClass:%02x\nProtocol:%02x\nMaxEpSize:%02x\nVendorId:%04x\nProductId:%04x\nUsbVersion:%04x\nNumofConfig:%02x\n",
+                            UsbViewDisplayPt->DeviceDisplay.DeviceClass,
+                            UsbViewDisplayPt->DeviceDisplay.DeviceSubClass,
+                            UsbViewDisplayPt->DeviceDisplay.DeviceProtocol,
+                            UsbViewDisplayPt->DeviceDisplay.MaximumDefaultEndpointSize,
+                            UsbViewDisplayPt->DeviceDisplay.VendorId,
+                            UsbViewDisplayPt->DeviceDisplay.ProductId,
+                            UsbViewDisplayPt->DeviceDisplay.UsbVersion,
+                            UsbViewDisplayPt->DeviceDisplay.NumberOfConfigurations);
+  Print(L"  MaxPower:%02x\n  Attributes:%02x\n  NumofInterfaces:%02x\n",
+                            UsbViewDisplayPt->ConfigDisplay.MaxPowerNeed,
+                            UsbViewDisplayPt->ConfigDisplay.Attributes,
+                            UsbViewDisplayPt->ConfigDisplay.NumberOfInterfaces);
+
+  InterfaceDisplayPt = UsbViewDisplayPt->InterfaceDisplay;
+  for(UINT16 Index = 0; Index < UsbViewDisplayPt->ConfigDisplay.NumberOfInterfaces; Index++)
   {
-    *DeviceAddress = Address;
-    return FALSE;
-  } else {
-    while( (*DeviceAddress) != 0 )
+    Print(L"    InterfaceNumber:%d\n    Class:%02x\n    SubClass:%02x\n    Protocol:%02x\n    AlternateNumber:%02x\n",
+                            InterfaceDisplayPt->InterfaceNumber,
+                            InterfaceDisplayPt->Class,
+                            InterfaceDisplayPt->SubClass,
+                            InterfaceDisplayPt->Protocol,
+                            InterfaceDisplayPt->AlternateNumber
+                            );
+    EndpointDisplayPt = InterfaceDisplayPt->EndpointDisplay;
+    for(UINT16 EpIndex = 0; EpIndex < InterfaceDisplayPt->NumberOfEndpoints; EpIndex++)
     {
-      if( *(DeviceAddress++) == Address )return TRUE;
+      Print(L"      Endpoint%d\n", EpIndex);
+      Print(L"      MaxPacketSize:%04x\n      Address:%02x\n      Interval:%04x\n      Attribute:%02x\n      Type:%2x\n",
+                              EndpointDisplayPt->MaxPacketSize,
+                              EndpointDisplayPt->Address,
+                              EndpointDisplayPt->Interval,
+                              EndpointDisplayPt->Attribute,
+                              EndpointDisplayPt->Type);
+      EndpointDisplayPt++;
     }
-    *(DeviceAddress++) = Address;
+    InterfaceDisplayPt++;
   }
-  return FALSE;
+
+  return ;
 }
-
-EFI_STATUS
-EFIAPI
-LsUsbHcInfo()
-{
-  EFI_STATUS Status;
-  UINTN                   NumOfHandles;
-  UINTN                   Count;
-  USB_INTERFACE           *RootIf;
-  USB_INTERFACE           *UsbIf;
-  USB_DEVICE              *RootHub;
-  USB_DEVICE              *UsbDev;
-  USB_BUS                 *Bus;
-  // UINTN                   SegmentNumber;
-  // UINTN                   BusNumber;
-  // UINTN                   DeviceNumber;
-  // UINTN                   FunctionNumber;
-  // UINT8                   MaxSpeed = 0;
-  // UINT8                   PortNumber = 0;
-  // UINT8                   Is64bit;
-  EFI_HANDLE              *HandleBuffer;
-  // EFI_USB2_HC_PROTOCOL    *Usb2HcProtocol;
-  EFI_USB_IO_PROTOCOL     *UsbIoProtocol;
-  // USB_VIEW_HUB_DISPLAY    HubDisplay;
-
-  USB_DEVICE_DESCRIPTOR   DeviceDsc;
-
-  Status = gBS->LocateHandleBuffer(
-                                  ByProtocol,
-                                  &gEfiUsbIoProtocolGuid,
-                                  NULL,
-                                  &NumOfHandles,
-                                  &HandleBuffer
-                                  );
-  if(EFI_ERROR(Status)){
-    Print(L"HandleBuffer:%r\n", Status);
-    return Status;
-  }
-
-  for( UINTN Index = 0; Index < NumOfHandles; Index++)
-  {
-    Status = gBS->HandleProtocol(
-                                HandleBuffer[Index],
-                                &gEfiUsbIoProtocolGuid,
-                                (void **)&UsbIoProtocol
-                                );
-    if(EFI_ERROR(Status)){
-      Print(L"HandleProtocol:%r\n", Status);
-      continue;
-    }
-    UsbIf  = USB_INTERFACE_FROM_USBIO( UsbIoProtocol);
-    UsbDev = UsbIf->Device;
-    DeviceDsc = UsbDev->DevDesc->Desc;
-    Print(L"%d:IsHub:%x\n", Index, UsbIf->IsHub);
-    Print(L"Speed:%02x,Address:%02x,Bus:%x, Class:%04x,SubClass:%04x, Protocol:%04x Vendor:%04x Product:%04x\n",
-                                                      UsbDev->Speed,
-                                                      UsbDev->Address,
-                                                      UsbDev->Bus->BusId.Reserved,
-                                                      DeviceDsc.DeviceClass,
-                                                      DeviceDsc.DeviceSubClass,
-                                                      DeviceDsc.DeviceProtocol,
-                                                      DeviceDsc.IdVendor,
-                                                      DeviceDsc.IdProduct);
-    Print(L"MaxPackeSize:%02x, NumOfCon:%02x, Manufac:%02x, Product:%02x, SerialNuber:%02x\n",
-                                DeviceDsc.MaxPacketSize0,
-                                DeviceDsc.NumConfigurations,
-                                DeviceDsc.StrManufacturer,
-                                DeviceDsc.StrProduct,
-                                DeviceDsc.StrSerialNumber );
-
-
-    Count = 0;
-    RootHub = UsbDev;
-    CHAR16* Blank= L"--";
-    while(1)
-    {
-      if(RootHub->ParentIf == NULL)break;
-      RootIf = RootHub->ParentIf;
-      RootHub = RootIf->Device;
-      DeviceDsc = RootHub->DevDesc->Desc;
-      for(UINT8 blank =0; blank<=Count;blank++)Print(L"%s", Blank);
-      Print(L"Parent%d:IsHub:%x\n", Count , RootIf->IsHub);
-      for(UINT8 blank =0; blank<=Count;blank++)Print(L"%s", Blank);
-      Print(L"Speed:%x,Address:%02x,Bus:%x,Class:%04x,SubClass:%04x, Protocol:%04x Vendor:%04x Product:%04x\n",
-                                                      RootHub->Speed,
-                                                      RootHub->Address,
-                                                      RootHub->Bus->BusId,
-                                                      DeviceDsc.DeviceClass,
-                                                      DeviceDsc.DeviceSubClass,
-                                                      DeviceDsc.DeviceProtocol,
-                                                      DeviceDsc.IdVendor,
-                                                      DeviceDsc.IdProduct);
-      for(UINT8 blank =0; blank<=Count;blank++)Print(L"%s", Blank);
-      Print(L"MaxPackeSize:%02x, NumOfCon:%02x, Manufac:%02x, Product:%02x, SerialNuber:%02x\n",
-                                DeviceDsc.MaxPacketSize0,
-                                DeviceDsc.NumConfigurations,
-                                DeviceDsc.StrManufacturer,
-                                DeviceDsc.StrProduct,
-                                DeviceDsc.StrSerialNumber);
-
-      if( RootHub->Bus->Usb2Hc != NULL){
-        Bus = RootHub->Bus;
-        for(UINT8 blank =0; blank<=Count;blank++)Print(L"%s", Blank);
-        Print(L"Bus:%d\n",Bus->MaxDevices);
-      }
-      Count++;
-    }
-
-  }
-
-  return Status;
-}
-UINT8  TestTmp = 0;
 
 VOID
 EFIAPI
-LsMessage( USB_DEVICE *UsbDev)
+LsMessage()
 {
-  USB_DEVICE_DESCRIPTOR   DeviceDsc;
-  // USB_CONFIG_DESC         Configs;
-  USB_CONFIG_DESC         *ConfigDesc;
-  USB_INTERFACE_DESC      **Interface;
-  Print(L"--------------------------\n");
-  DeviceDsc = UsbDev->DevDesc->Desc;
-  ConfigDesc = UsbDev->ActiveConfig;
-  Interface = ConfigDesc->Interfaces;
-  Print(L"Tier:%02x,Address:%02x,Class:%04x,SubClass:%04x, Protocol:%04x Vendor:%04x Product:%04x,NumOfConfig:%04x\n",
-                                                      UsbDev->Tier,
-                                                      UsbDev->Address,
-                                                      DeviceDsc.DeviceClass,
-                                                      DeviceDsc.DeviceSubClass,
-                                                      DeviceDsc.DeviceProtocol,
-                                                      DeviceDsc.IdVendor,
-                                                      DeviceDsc.IdProduct,
-                                                      DeviceDsc.NumConfigurations);
-  Print(L"  Configure:\n");
-  Print(L"  Len:%02x,DscType:%02x,TotalLen:%04x,NumIf:%02x,ConValue:%02x,Con:%02x,Attr:%02x,MaxPow:%02x\n",
-                        ConfigDesc->Desc.Length,
-                        ConfigDesc->Desc.DescriptorType,
-                        ConfigDesc->Desc.TotalLength,
-                        ConfigDesc->Desc.NumInterfaces,
-                        ConfigDesc->Desc.ConfigurationValue,
-                        ConfigDesc->Desc.Configuration,
-                        ConfigDesc->Desc.Attributes,
-                        ConfigDesc->Desc.MaxPower);
-  for(UINT16 Index = 0; Index < ConfigDesc->Desc.NumInterfaces; Index++)
+  UINT16 Index;
+  USB_VIEW_DISPLAY        *UsbViewDisplayArrayPt;
+  UsbViewDisplayArrayPt = UsbViewDisplayArray;
+  for(Index = 0; Index < DISPLAY_SIZE; Index++)
   {
-    Print(L"    Interface:%d\n", Index);
-    Print(L"      ActiveIndex:%04x\n",
-                       Interface[Index]->ActiveIndex
-                       );
+    if(UsbViewDisplayArrayPt->Parent == Index &&UsbViewDisplayArrayPt->AddressMark != 0)
+    {
+      PrintMessage( UsbViewDisplayArrayPt );
+      FindUsbViewChild(Index);
+    }
+    UsbViewDisplayArrayPt++;
   }
-
 
   return;
 }
@@ -560,31 +590,20 @@ UsbViewMain(
 )
 {
   EFI_STATUS              Status;
-  // // Status = LsUsbHcInfo();
   UINTN                   NumOfHandles;
-  // // UINTN                   SegmentNumber;
-  // // UINTN                   BusNumber;
-  // // UINTN                   DeviceNumber;
-  // // UINTN                   FunctionNumber;
-  // EFI_USB2_HC_PROTOCOL    *Usb2Hc;
   EFI_USB_IO_PROTOCOL     *UsbIo;
   EFI_HANDLE              *HandleBuffer;
   USB_BUS                 *Bus;
   USB_INTERFACE           *UsbIf;
   USB_INTERFACE           *RootIf;
   USB_DEVICE              *RootHub;
-  // USB_DEVICE              *UsbDev;
   USB_DEVICE              *Child;
-  UINT64                  *DeviceAddress;
-  USB_VIEW_DEVICE_DISPLAY       DeviceDisplay;
   EFI_USB_PORT_STATUS     PortStatus;
-  // USB_VIEW_CONFIG_DISPLAY       ConfigDisplay;
-  // USB_VIEW_INTERFACE_DISPLAY    InterfaceDisplay;
-  // USB_VIEW_ENDPOINT_DISPLAY     EndpointDisplay;
+  USB_VIEW_DISPLAY        *UsbViewDisplayPt;
+
+  InitUsbViewDispaly();
 
 
-
-  DeviceAddress = AllocateZeroPool( sizeof(UINT64)*256  );//max device 256
   Status = gBS->LocateHandleBuffer(
                                   ByProtocol,
                                   &gEfiUsbIoProtocolGuid,
@@ -596,7 +615,7 @@ UsbViewMain(
     Print(L"HandleBuffer:%r\n", Status);
     return Status;
   }
-  Print(L"Num of Handles:%d\n", NumOfHandles);
+  // Print(L"Num of Handles:%d\n", NumOfHandles);
   for( UINTN Index = 0; Index < NumOfHandles; Index++)
   {
     Status = gBS->HandleProtocol(
@@ -615,7 +634,27 @@ UsbViewMain(
     RootHub = Bus->Devices[0];
     RootIf  = RootHub->Interfaces[0];
 
-    Print(L"Roothub%d\n", Index);
+    UsbViewDisplayPt = FindUsbViewDisplay( (UINT64)RootHub);
+    //
+    //Have been found, or more than DisplaySize
+    //
+    if(UsbViewDisplayPt == NULL)
+    {
+      continue;
+    }
+    UsbGetDevDesc(RootHub);
+    LsDeviceDesc(UsbViewDisplayPt, RootHub->DevDesc->Desc);
+
+    //Need to get the Desc
+    // LsConfigDesc(UsbViewDisplayPt, RootHub->ActiveConfig->Desc);
+
+    // UsbViewDisplayPt->InterfaceDisplay = AllocatePool( sizeof(USB_VIEW_INTERFACE_DISPLAY) * RootHub->NumOfInterface );
+    // for(UINT8 InterfaceIndex = 0; InterfaceIndex<RootHub->NumOfInterface;InterfaceIndex++ )
+    // {
+    //   LsInterfaceDesc(&UsbViewDisplayPt->InterfaceDisplay[Index], RootHub->Interfaces[Index]->IfSetting);
+    // }
+
+
     //find child device
     for (UINT8 ChildIndex = 0; ChildIndex < RootIf->NumOfPort; ChildIndex++) {
 
@@ -624,82 +663,15 @@ UsbViewMain(
       {
 
         RootIf->HubApi->GetPortStatus(RootIf, ChildIndex, &PortStatus);
-        Print(L"Tier:%d\n", RootHub->Tier);
-        Print(L"Port:%d:%04x, %04x\n",Index, PortStatus.PortStatus, PortStatus.PortChangeStatus);
-        DealChild(Child);
-        // Print(L"Index%d: Speed %x, Tier %d \n",ChildIndex, Child->Speed, Child->Tier);
-        // Print(L"class:%x, %x\n", Child->DevDesc->Desc.DeviceClass,Child->DevDesc->Desc.IdVendor);
-        // for(UINT8 InterfaceIndex = 0; InterfaceIndex < Child->NumOfInterface; InterfaceIndex++)
-        // {
-        //   Print(L"IsHub:%x\n", Child->Interfaces[InterfaceIndex]->IsHub);
-        //   if(Child->Interfaces[InterfaceIndex]->IsHub && Child->Interfaces[InterfaceIndex]->IsManaged)
-        //   {
-        //     Print(L"HubPort:%x\n",Child->Interfaces[InterfaceIndex]->NumOfPort);
-        //     for(UINT16 HubChildIndex = 0; HubChildIndex < Child->Interfaces[InterfaceIndex]->NumOfPort; HubChildIndex++)
-        //     {
-        //       HubChild = UsbFindChild(Child->Interfaces[InterfaceIndex], HubChildIndex);
-        //       if(HubChild != NULL && HubChild->DisconnectFail==FALSE)
-        //       {
-        //         Print(L"HubChild:%x, %x\n", HubChild->DevDesc->Desc.DeviceClass, HubChild->DevDesc->Desc.IdVendor);
-        //       }
-        //     }
+        // Print(L"Tier:%d\n", RootHub->Tier);
+        // Print(L"Port:%d:%04x, %04x\n",Index, PortStatus.PortStatus, PortStatus.PortChangeStatus);
+        DealChild(Child, UsbViewDisplayPt->Parent);
 
-
-        //   }
-
-        // }
-        // Print(L"\n");
       }
 
     }
-    continue;
-    DeviceDisplay.IsXhci = TRUE;
-    DeviceDisplay.IsHub  = TRUE;
-    DeviceDisplay.Address = RootHub->Address;
-    DeviceDisplay.Bus     = 0; //need to get;
-    DeviceDisplay.BandWidthAllocated = 0; //need to get;
-    DeviceDisplay.DeviceClass     = RootHub->DevDesc->Desc.DeviceClass;
-    DeviceDisplay.DeviceSubClass  = RootHub->DevDesc->Desc.DeviceSubClass;
-    DeviceDisplay.DeviceProtocol  = RootHub->DevDesc->Desc.DeviceProtocol;
-    if(RootIf == NULL)continue;
-    // Status = RootIf->UsbIo.UsbGetStringDescriptor(&RootIf->UsbIo,
-    //                                       RootHub->LangId[0],
-    //                                       RootHub->DevDesc->Desc.StrManufacturer,
-    //                                       &DeviceDisplay.Manufacturer );
 
-
-    Print(L"Get Manufacturer:%r\n", Status);
-    if( !EFI_ERROR(Status) )
-    {
-      DeviceDisplay.Manufacturer = L"NoGet";
-    }
-    DeviceDisplay.Name = L"NeedToFind";
-
-    // Status = RootIf->UsbIo.UsbGetStringDescriptor(&RootIf->UsbIo,
-    //                                       RootHub->LangId[0],
-    //                                       RootHub->DevDesc->Desc.StrSerialNumber,
-    //                                       &DeviceDisplay.SerialNumber );
-    Print(L"Get SerialNumber:%r\n", Status);
-    if( !EFI_ERROR(Status) )
-    {
-      DeviceDisplay.SerialNumber = L"NoGet";
-    }
-    DeviceDisplay.ProductId  = RootHub->DevDesc->Desc.IdProduct;
-    DeviceDisplay.VendorId   =
-    DeviceDisplay.UsbVersion = RootHub->DevDesc->Desc.BcdUSB;
-    DeviceDisplay.RevisionNumber = RootHub->DevDesc->Desc.BcdDevice;
-    DeviceDisplay.Speed      = RootHub->Speed;
-    DeviceDisplay.NumberOfConfigurations = RootHub->DevDesc->Desc.NumConfigurations;
-    DeviceDisplay.NumberOfPort = RootIf->NumOfPort;
-    DeviceDisplay.MaximumDefaultEndpointSize = RootHub->DevDesc->Desc.MaxPacketSize0;
-
-
-    if(   CheckDeviceExist(RootHub, DeviceAddress) ) continue;
-
-
-    LsDevice(DeviceDisplay);
-    Print(L"\n");
   }
-
+  LsMessage();
   return Status;
 }
