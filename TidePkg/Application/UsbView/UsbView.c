@@ -2,7 +2,10 @@
 
 USB_VIEW_DISPLAY        UsbViewDisplayArray[DISPLAY_SIZE];
 
-
+/*
+Array's Parent == Array's Index, then mean this Array is the root.
+AddressMark == 0, mean this Array is unused.
+*/
 VOID
 EFIAPI
 InitUsbViewDispaly()
@@ -20,7 +23,11 @@ InitUsbViewDispaly()
   return;
 }
 
-
+/*
+According to the AddressMark, find the UsbViewDisplay point.
+if the point is exist, then return NULL
+if the point is not exist, then return the point, and used the UsbViewDisplayArray.
+*/
 USB_VIEW_DISPLAY *
 EFIAPI
 FindUsbViewDisplay(UINT64 AddressMark)
@@ -43,6 +50,9 @@ FindUsbViewDisplay(UINT64 AddressMark)
   return NULL;
 }
 
+/*
+Print all child's message
+*/
 VOID
 EFIAPI
 FindUsbViewChild(UINT16 ParentIndex)
@@ -63,6 +73,9 @@ FindUsbViewChild(UINT16 ParentIndex)
   return ;
 }
 
+/*
+Set the parent-child relation ship.
+*/
 VOID
 EFIAPI
 SetUsbViewDispaly(USB_VIEW_DISPLAY *UsbViewDisplay, UINT16 ParentIndex)
