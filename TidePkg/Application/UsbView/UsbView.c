@@ -13,6 +13,8 @@ InitUsbViewDispaly()
   {
     UsbViewDisplayArrayPt->Parent = Index;
     UsbViewDisplayArrayPt->AddressMark = 0;
+    UsbViewDisplayArrayPt->DeviceDisplay.IsHub = FALSE;
+    UsbViewDisplayArrayPt->DeviceDisplay.IsXhci = FALSE;
     UsbViewDisplayArrayPt++;
   }
   return;
@@ -352,6 +354,31 @@ UsbGetOneString (
 }
 
 
+UINT8
+UsbGetConfig (
+  IN USB_DEVICE           *UsbDev
+  )
+{
+  UINT8                     Data;
+  EFI_STATUS                Status;
+
+  Status = UsbCtrlRequest (
+             UsbDev,
+             EfiUsbDataIn,
+             USB_REQ_TYPE_STANDARD,
+             USB_TARGET_DEVICE,
+             USB_REQ_GET_CONFIG,
+             0,
+             0,
+             &Data,
+             1
+             );
+
+  return Data;
+
+
+}
+
 VOID
 EFIAPI
 LsDeviceDesc(USB_VIEW_DISPLAY *UsbViewDisplay, EFI_USB_DEVICE_DESCRIPTOR Desc)
@@ -457,6 +484,7 @@ DealChild(USB_DEVICE *Dev, UINT16 ParentIndex)
     //
     if(Dev->Interfaces[Index]->IsHub)
     {
+      UsbViewDisplayPt->DeviceDisplay.IsHub = TRUE;
       for (UINT8 ChildIndex = 0; ChildIndex < Dev->Interfaces[Index]->NumOfPort; ChildIndex++)
       {
         Child = UsbFindChild(Dev->Interfaces[Index], ChildIndex);
@@ -466,7 +494,6 @@ DealChild(USB_DEVICE *Dev, UINT16 ParentIndex)
         }
       }
     }
-
     LsInterfaceDesc(&UsbViewDisplayPt->InterfaceDisplay[Index], Dev->Interfaces[Index]->IfSetting);
 
 
@@ -519,6 +546,15 @@ PrintMessage( USB_VIEW_DISPLAY *UsbViewDisplayPt)
 {
   USB_VIEW_INTERFACE_DISPLAY *InterfaceDisplayPt;
   USB_VIEW_ENDPOINT_DISPLAY  *EndpointDisplayPt;
+  if(UsbViewDisplayPt->DeviceDisplay.IsHub && UsbViewDisplayPt->DeviceDisplay.IsXhci)
+  {
+    Print(L"Xhci:------------------\n");
+  }
+  else if(UsbViewDisplayPt->DeviceDisplay.IsHub && !UsbViewDisplayPt->DeviceDisplay.IsXhci){
+    Print(L"Hub:-------------------\n");
+  }else{
+
+  }
   Print(L"Class:%02x\nSubClass:%02x\nProtocol:%02x\nMaxEpSize:%02x\nVendorId:%04x\nProductId:%04x\nUsbVersion:%04x\nNumofConfig:%02x\n",
                             UsbViewDisplayPt->DeviceDisplay.DeviceClass,
                             UsbViewDisplayPt->DeviceDisplay.DeviceSubClass,
@@ -557,7 +593,7 @@ PrintMessage( USB_VIEW_DISPLAY *UsbViewDisplayPt)
     }
     InterfaceDisplayPt++;
   }
-
+  Print(L"-------------------------\n");
   return ;
 }
 
@@ -642,18 +678,8 @@ UsbViewMain(
     {
       continue;
     }
-    UsbGetDevDesc(RootHub);
-    LsDeviceDesc(UsbViewDisplayPt, RootHub->DevDesc->Desc);
-
-    //Need to get the Desc
-    // LsConfigDesc(UsbViewDisplayPt, RootHub->ActiveConfig->Desc);
-
-    // UsbViewDisplayPt->InterfaceDisplay = AllocatePool( sizeof(USB_VIEW_INTERFACE_DISPLAY) * RootHub->NumOfInterface );
-    // for(UINT8 InterfaceIndex = 0; InterfaceIndex<RootHub->NumOfInterface;InterfaceIndex++ )
-    // {
-    //   LsInterfaceDesc(&UsbViewDisplayPt->InterfaceDisplay[Index], RootHub->Interfaces[Index]->IfSetting);
-    // }
-
+    UsbViewDisplayPt->DeviceDisplay.IsHub = TRUE;
+    UsbViewDisplayPt->DeviceDisplay.IsXhci = TRUE;
 
     //find child device
     for (UINT8 ChildIndex = 0; ChildIndex < RootIf->NumOfPort; ChildIndex++) {
