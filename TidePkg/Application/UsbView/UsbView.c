@@ -689,7 +689,7 @@ EnumerUsbDevieInfo(EFI_HANDLE *HandleBuffer, UINTN NumOfHandles)
   {
     DevicePath = DevicePathFromHandle(HandleBuffer[Index]);
     if(DevicePath == NULL){
-      Print(L"Not DevicePath\n", Status);
+      // Print(L"Not DevicePath\n", Status);
       StringPath = L"NULL";
     }else{
       StringPath = mDevice2TextProtocol->ConvertDevicePathToText(DevicePath, TRUE, TRUE);
@@ -712,7 +712,7 @@ EnumerUsbDevieInfo(EFI_HANDLE *HandleBuffer, UINTN NumOfHandles)
                         StringPath);
 
     if(ChildControllerHandleCount == 0){
-        Print(L"%sNo Child\n", mFormat);
+        // Print(L"%sNo Child\n", mFormat);
     }else{
 
         UnicodeSPrint(mFormat, 20, L"%s--", mFormat);
@@ -749,25 +749,24 @@ EnumerUsbRootInfo(EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN Relation
   EFI_DEVICE_PATH_PROTOCOL  *DevicePath;
   CHAR16                    *StringPath;
   CHAR16                    *DeviceName;
-  UINTN                     NumOfUsbIoHandles;
-  EFI_HANDLE                *UsbIoHandleBuffer;
-
   EFI_HANDLE                *ChildControllerHandleBuffer = NULL;
   UINTN                     ChildControllerHandleCount;
 
-  Status = gBS->LocateHandleBuffer(
-                                ByProtocol,
-                                &gEfiUsbIoProtocolGuid,
-                                NULL,
-                                &NumOfUsbIoHandles,
-                                &UsbIoHandleBuffer
-                                );
-  UINT16 tmp;
-  for( tmp = 0; tmp < NumOfUsbIoHandles; tmp++)
-  {
-    Print(L"[%02x] ", ConvertHandleToHandleIndex(UsbIoHandleBuffer[tmp]));
-  }
-  Print(L"\n");
+  // UINTN                     NumOfUsbIoHandles;
+  // EFI_HANDLE                *UsbIoHandleBuffer;
+  // Status = gBS->LocateHandleBuffer(
+  //                               ByProtocol,
+  //                               &gEfiUsbIoProtocolGuid,
+  //                               NULL,
+  //                               &NumOfUsbIoHandles,
+  //                               &UsbIoHandleBuffer
+  //                               );
+  // UINT16 tmp;
+  // for( tmp = 0; tmp < NumOfUsbIoHandles; tmp++)
+  // {
+  //   Print(L"[%02x] ", ConvertHandleToHandleIndex(UsbIoHandleBuffer[tmp]));
+  // }
+  // Print(L"\n");
 
   //
   //Enumerate all Roothub and Roothub's child device
