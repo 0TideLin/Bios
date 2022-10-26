@@ -9,6 +9,8 @@
 #include <Protocol/DevicePath.h>
 #include <Protocol/PciIo.h>
 #include <Protocol/PciRootBridgeIo.h>
+#include <Protocol/DevicePathToText.h>
+#include <Protocol/Shell.h>
 
 #include <Library/BaseLib.h>
 #include <Library/DebugLib.h>
@@ -18,6 +20,9 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
 #include <Library/DevicePathLib.h>
+#include <Library/HandleParsingLib.h>
+#include <Library/UefiShellLib/UefiShellLib.h>
+#include <Library/UefiHandleParsingLib/UefiHandleParsingLib.h>
 
 #include <IndustryStandard/Pci22.h>
 #include <IndustryStandard/Usb.h>

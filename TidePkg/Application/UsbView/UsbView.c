@@ -1,6 +1,9 @@
 #include "UsbView.h"
 
-USB_VIEW_DISPLAY        UsbViewDisplayArray[DISPLAY_SIZE];
+USB_VIEW_DISPLAY                 UsbViewDisplayArray[DISPLAY_SIZE];
+CHAR16                           *mFormat;
+CHAR8                            *mLanguage;
+EFI_DEVICE_PATH_TO_TEXT_PROTOCOL *mDevice2TextProtocol;
 
 /*
 Array's Parent == Array's Index, then mean this Array is the root.
@@ -630,6 +633,204 @@ LsMessage()
   return;
 }
 
+EFI_STATUS
+EFIAPI
+GetRootHubCapability( EFI_HANDLE Handle)
+{
+  EFI_STATUS Status;
+  EFI_USB2_HC_PROTOCOL  *Usb2Hc;
+  UINT8 MaxSpeed;
+  UINT8 PortNumber;
+  UINT8 Is64Bit;
+  Status = gBS->HandleProtocol(Handle,
+                    &gEfiUsb2HcProtocolGuid,
+                    (VOID**)&Usb2Hc);
+  Status = Usb2Hc->GetCapability(Usb2Hc, &MaxSpeed, &PortNumber, &Is64Bit);
+  Print(L"MaxSpeed:%02x, PortNumber:%02x, Is64Bit:%02x\n",
+                                            MaxSpeed,
+                                            PortNumber,
+                                            Is64Bit);
+  return Status;
+}
+
+
+EFI_DEVICE_PATH_PROTOCOL*
+WalkthroughDevicePath(
+   EFI_DEVICE_PATH_PROTOCOL* DevPath
+   )
+{
+
+     EFI_DEVICE_PATH_PROTOCOL* pDevPath=DevPath;
+     while(!IsDevicePathEnd(pDevPath)){
+      Print(L"(%x,%x,%x,%x) ",pDevPath->Length[1], pDevPath->Length[0],pDevPath->Type, pDevPath->SubType);
+      pDevPath= NextDevicePathNode(pDevPath);
+     }
+     Print(L"\n");
+     return pDevPath;
+}
+
+//
+//Device
+//
+EFI_STATUS
+EnumerUsbDevieInfo(EFI_HANDLE *HandleBuffer, UINTN NumOfHandles)
+{
+  EFI_STATUS                Status;
+  UINT16                    Index;
+  EFI_DEVICE_PATH_PROTOCOL  *DevicePath;
+  CHAR16                    *StringPath;
+
+  EFI_HANDLE                *ChildControllerHandleBuffer = NULL;
+  UINTN                     ChildControllerHandleCount;
+
+
+
+  for( Index = 0; Index < NumOfHandles; Index++)
+  {
+    DevicePath = DevicePathFromHandle(HandleBuffer[Index]);
+    if(DevicePath == NULL){
+      Print(L"Not DevicePath\n", Status);
+      StringPath = L"NULL";
+    }else{
+      StringPath = mDevice2TextProtocol->ConvertDevicePathToText(DevicePath, TRUE, TRUE);
+    }
+
+
+    //
+    //Look up the parent-child relationship about the handle.
+    //
+    Status = ParseHandleDatabaseForChildControllers(
+                                      HandleBuffer[Index],
+                                      &ChildControllerHandleCount,
+                                      &ChildControllerHandleBuffer
+                                      );
+    //
+    //Print message
+    //
+    Print(L"%s%s:",mFormat, L"DEVICE" );
+    Print(L"[%02x]:%s\n", ConvertHandleToHandleIndex(HandleBuffer[Index]),
+                        StringPath);
+
+    if(ChildControllerHandleCount == 0){
+        Print(L"%sNo Child\n", mFormat);
+    }else{
+
+        UnicodeSPrint(mFormat, 20, L"%s--", mFormat);
+        EnumerUsbDevieInfo(ChildControllerHandleBuffer, ChildControllerHandleCount);
+        mFormat[ StrLen(mFormat) - 2 ] = L'\0';
+        // Status = gEfiShellProtocol->GetDeviceName(ChildControllerHandleBuffer[HandleIndex],
+        //                                           EFI_DEVICE_NAME_USE_COMPONENT_NAME|EFI_DEVICE_NAME_USE_DEVICE_PATH,
+        //                                           mLanguage,
+        //                                           &DeviceName);
+        // Print(L"Child[%X]:%s\n", ConvertHandleToHandleIndex(ChildControllerHandleBuffer[HandleIndex]),
+        //                           DeviceName );
+    }
+
+    if(StringPath != NULL){
+      FreePool(StringPath);
+    }
+    SHELL_FREE_NON_NULL(ChildControllerHandleBuffer);
+    // WalkthroughDevicePath(DevicePath);
+
+  }
+
+  return Status;
+}
+
+
+//
+//Roothub
+//
+EFI_STATUS
+EnumerUsbRootInfo(EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN Relationship)
+{
+  EFI_STATUS                Status;
+  UINT16                    Index;
+  EFI_DEVICE_PATH_PROTOCOL  *DevicePath;
+  CHAR16                    *StringPath;
+  CHAR16                    *DeviceName;
+  UINTN                     NumOfUsbIoHandles;
+  EFI_HANDLE                *UsbIoHandleBuffer;
+
+  EFI_HANDLE                *ChildControllerHandleBuffer = NULL;
+  UINTN                     ChildControllerHandleCount;
+
+  Status = gBS->LocateHandleBuffer(
+                                ByProtocol,
+                                &gEfiUsbIoProtocolGuid,
+                                NULL,
+                                &NumOfUsbIoHandles,
+                                &UsbIoHandleBuffer
+                                );
+  UINT16 tmp;
+  for( tmp = 0; tmp < NumOfUsbIoHandles; tmp++)
+  {
+    Print(L"[%02x] ", ConvertHandleToHandleIndex(UsbIoHandleBuffer[tmp]));
+  }
+  Print(L"\n");
+
+  //
+  //Enumerate all Roothub and Roothub's child device
+  //
+  for( Index = 0; Index < NumOfHandles; Index++)
+  {
+    //
+    //Get the DeviceName and DevicePath text
+    //
+    DevicePath = DevicePathFromHandle(HandleBuffer[Index]);
+    if(DevicePath == NULL){
+      Print(L"Root not DevicePath:%r\n", Status);
+      continue;
+    }
+    gEfiShellProtocol->GetDeviceName(HandleBuffer[Index],
+                                    EFI_DEVICE_NAME_USE_COMPONENT_NAME|EFI_DEVICE_NAME_USE_DEVICE_PATH,
+                                    mLanguage,
+                                    &DeviceName);
+
+    StringPath = mDevice2TextProtocol->ConvertDevicePathToText(DevicePath, TRUE, TRUE);
+
+    //
+    //Look up the parent-child relationship about the handle.
+    //
+    Status = ParseHandleDatabaseForChildControllers(
+                                      HandleBuffer[Index],
+                                      &ChildControllerHandleCount,
+                                      &ChildControllerHandleBuffer
+                                      );
+    //
+    //Print message
+    //
+    Print(L"[%2x]%s: %s\n",ConvertHandleToHandleIndex(HandleBuffer[Index]),
+                          (DeviceName != NULL ? DeviceName : L"Unknown"),
+                          StringPath);
+
+    if(ChildControllerHandleCount == 0){
+
+    }else{
+      UnicodeSPrint(mFormat, 20, L"%s--", mFormat);
+      EnumerUsbDevieInfo(ChildControllerHandleBuffer,  ChildControllerHandleCount);
+      mFormat[ StrLen(mFormat) - 2 ] = L'\0';
+      // for(UINT16 HandleIndex = 0; HandleIndex < ChildControllerHandleCount && Relationship; HandleIndex++)
+      // {
+      //   Status = gEfiShellProtocol->GetDeviceName(ChildControllerHandleBuffer[HandleIndex],
+      //                                             EFI_DEVICE_NAME_USE_COMPONENT_NAME|EFI_DEVICE_NAME_USE_DEVICE_PATH,
+      //                                             mLanguage,
+      //                                             &DeviceName);
+      //   Print(L"Child[%X]:%s\n", ConvertHandleToHandleIndex(ChildControllerHandleBuffer[HandleIndex]),
+      //                             DeviceName );
+      // }
+
+    }
+
+    if(StringPath != NULL){
+      FreePool(StringPath);
+    }
+    SHELL_FREE_NON_NULL(ChildControllerHandleBuffer);
+    // WalkthroughDevicePath(DevicePath);
+  }
+
+  return Status;
+}
 
 EFI_STATUS
 EFIAPI
@@ -639,78 +840,54 @@ UsbViewMain(
 )
 {
   EFI_STATUS              Status;
-  UINTN                   NumOfHandles;
-  EFI_USB_IO_PROTOCOL     *UsbIo;
-  EFI_HANDLE              *HandleBuffer;
-  USB_BUS                 *Bus;
-  USB_INTERFACE           *UsbIf;
-  USB_INTERFACE           *RootIf;
-  USB_DEVICE              *RootHub;
-  USB_DEVICE              *Child;
-  EFI_USB_PORT_STATUS     PortStatus;
-  USB_VIEW_DISPLAY        *UsbViewDisplayPt;
+  UINTN                   NumOfUsbHcHandles;
+  EFI_HANDLE              *UsbHcHandleBuffer;
+  // EFI_USB_IO_PROTOCOL     *UsbIo;
+  // USB_BUS                 *Bus;
+  // USB_INTERFACE           *UsbIf;
+  // USB_INTERFACE           *RootIf;
+  // USB_DEVICE              *RootHub;
+  // USB_DEVICE              *Child;
+  // EFI_USB_PORT_STATUS     PortStatus;
+  // USB_VIEW_DISPLAY        *UsbViewDisplayPt;
 
-  InitUsbViewDispaly();
+  //
+  //Init
+  //
+  mFormat = AllocatePool( sizeof(CHAR16) * 20 );
+  UnicodeSPrint(mFormat, 20, L"--");
 
+  mLanguage = AllocatePool(10);
+  AsciiSPrint(mLanguage, 10, "en-us");
+
+
+  Status = gBS->LocateProtocol(
+                        &gEfiDevicePathToTextProtocolGuid,
+                        NULL,
+                        (VOID**)&mDevice2TextProtocol);
+
+  if(EFI_ERROR(Status)){
+    Print(L"Get Device2TextProtocol %r\n", Status);
+    return Status;
+  }
 
   Status = gBS->LocateHandleBuffer(
                                   ByProtocol,
-                                  &gEfiUsbIoProtocolGuid,
+                                  &gEfiUsb2HcProtocolGuid,
                                   NULL,
-                                  &NumOfHandles,
-                                  &HandleBuffer
+                                  &NumOfUsbHcHandles,
+                                  &UsbHcHandleBuffer
                                   );
+
+
   if(EFI_ERROR(Status)){
     Print(L"HandleBuffer:%r\n", Status);
     return Status;
   }
-  // Print(L"Num of Handles:%d\n", NumOfHandles);
-  for( UINTN Index = 0; Index < NumOfHandles; Index++)
-  {
-    Status = gBS->HandleProtocol(
-                                HandleBuffer[Index],
-                                &gEfiUsbIoProtocolGuid,
-                                (void **)&UsbIo
-                                );
-    if(EFI_ERROR(Status)){
-      Print(L"HandleProtocol:%r\n", Status);
-      continue;
-    }
-    //get the root hub
-    UsbIf  = USB_INTERFACE_FROM_USBIO( UsbIo);
-    if(UsbIf == NULL)continue;
-    Bus = UsbIf->Device->Bus;
-    RootHub = Bus->Devices[0];
-    RootIf  = RootHub->Interfaces[0];
 
-    UsbViewDisplayPt = FindUsbViewDisplay( (UINT64)RootHub);
-    //
-    //Have been found, or more than DisplaySize
-    //
-    if(UsbViewDisplayPt == NULL)
-    {
-      continue;
-    }
-    UsbViewDisplayPt->DeviceDisplay.IsHub = TRUE;
-    UsbViewDisplayPt->DeviceDisplay.IsXhci = TRUE;
+  Print(L"Hc Handles:%d\n", NumOfUsbHcHandles);
+  EnumerUsbRootInfo(UsbHcHandleBuffer, NumOfUsbHcHandles, TRUE);
 
-    //find child device
-    for (UINT8 ChildIndex = 0; ChildIndex < RootIf->NumOfPort; ChildIndex++) {
 
-      Child = UsbFindChild (RootIf, ChildIndex);
-      if(Child != NULL && Child->DisconnectFail == FALSE)
-      {
-
-        RootIf->HubApi->GetPortStatus(RootIf, ChildIndex, &PortStatus);
-        // Print(L"Tier:%d\n", RootHub->Tier);
-        // Print(L"Port:%d:%04x, %04x\n",Index, PortStatus.PortStatus, PortStatus.PortChangeStatus);
-        DealChild(Child, UsbViewDisplayPt->Parent);
-
-      }
-
-    }
-
-  }
-  LsMessage();
   return Status;
 }

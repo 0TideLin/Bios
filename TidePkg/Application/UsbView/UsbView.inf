@@ -30,6 +30,8 @@
   DebugLib
   ReportStatusCodeLib
   ShellLib
+  DevicePathLib
+  HandleParsingLib
 [Guids]
 
 [Protocols]

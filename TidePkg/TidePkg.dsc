@@ -5,7 +5,7 @@
 # EDK2 Library Class Instance Mappings (only used by EDK2 Modules)
 # EDK2 PCD Entries
 ########################################################################################
-#Defines 
+#Defines
 #定义变量，格式：	Name = Value
 #				 DEFINE MACRO = Value 定义全局宏，在FDF文件中和！include包含的文件中，可使用$(MACRO)来访问
 ########################################################################################
@@ -36,7 +36,7 @@
 	DebugPrintErrorLevelLib|MdePkg/Library/BaseDebugPrintErrorLevelLib/BaseDebugPrintErrorLevelLib.inf
 	!else   ## DEBUG_ENABLE_OUTPUT
 		DebugLib|MdePkg/Library/BaseDebugLibNull/BaseDebugLibNull.inf
-	!endif  ## DEBUG_ENABLE_OUTPUT	
+	!endif  ## DEBUG_ENABLE_OUTPUT
 	PcdLib|MdePkg/Library/BasePcdLibNull/BasePcdLibNull.inf
 	MemoryAllocationLib|MdePkg/Library/UefiMemoryAllocationLib/UefiMemoryAllocationLib.inf
 	UefiBootServicesTableLib|MdePkg/Library/UefiBootServicesTableLib/UefiBootServicesTableLib.inf
@@ -65,6 +65,7 @@
 	SortLib|MdeModulePkg/Library/UefiSortLib/UefiSortLib.inf
 	IoLib|MdePkg/Library/BaseIoLibIntrinsic/BaseIoLibIntrinsic.inf
 	RegisterFilterLib|MdePkg/Library/RegisterFilterLibNull/RegisterFilterLibNull.inf
+	HandleParsingLib|ShellPkg/Library/UefiHandleParsingLib/UefiHandleParsingLib.inf
 
 ########################################################################################
 #Components
