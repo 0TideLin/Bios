@@ -4,9 +4,13 @@
   FILE_GUID             = be84d169-695b-4cd1-8005-be64f20c79c4
   MODULE_TYPE           = UEFI_APPLICATION
   VERSION_STRING        = 1.0
-  ENTRY_POINT           = UsbViewMain
+  ENTRY_POINT           = UsbViewAppInitialize
+
+  UEFI_HII_RESOURCE_SECTION  = TRUE
 
 [Sources]
+  UsbView.uni
+  UsbViewApp.c
   UsbView.c
   UsbView.h
   UsbHub.h
@@ -41,3 +45,4 @@
   gEfiUsbHcProtocolGuid
   gEfiDevicePathToTextProtocolGuid
   gEfiPciRootBridgeIoProtocolGuid
+  gEfiHiiPackageListProtocolGuid

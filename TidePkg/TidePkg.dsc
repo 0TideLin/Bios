@@ -82,7 +82,7 @@
 #
 ########################################################################################
 [Components]
-	TidePkg/Application/UsbView/UsbView.inf
+	TidePkg/Application/UsbView/UsbViewApp.inf
 	TidePkg/Application/PciRead/PciRead.inf
 
 [BuildOptions.Common]

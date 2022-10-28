@@ -23,6 +23,8 @@
 #include <Library/HandleParsingLib.h>
 #include <Library/UefiShellLib/UefiShellLib.h>
 #include <Library/UefiHandleParsingLib/UefiHandleParsingLib.h>
+#include <Library/HiiLib.h>
+#include <Library/UefiHiiServicesLib.h>
 
 #include <IndustryStandard/Pci22.h>
 #include <IndustryStandard/Usb.h>
@@ -48,6 +50,7 @@
 
 #define DISPLAY_SIZE 100
 
+extern EFI_HII_HANDLE                *mUsbViewHiiHandle;
 typedef struct
 {
   CHAR16   *Name;
@@ -70,6 +73,14 @@ typedef struct
   BOOLEAN  IsHub;
   BOOLEAN  IsXhci;
 }USB_VIEW_DEVICE_DISPLAY;
+
+
+EFI_STATUS
+EFIAPI
+RunUsbView(
+  IN EFI_HANDLE        ImageHandle,
+  IN EFI_SYSTEM_TABLE  *SystemTable
+);
 
 VOID
 EFIAPI
@@ -126,6 +137,19 @@ typedef struct
   USB_VIEW_INTERFACE_DISPLAY    *InterfaceDisplay;
 }USB_VIEW_DISPLAY;
 
+typedef struct
+{
+  UINT8  ParentPort;
+  UINT8  Interface;
+}USB_PARENT_AND_INTERFACE;
+
+typedef struct
+{
+  USB_PARENT_AND_INTERFACE ParAndIf[8];
+  UINT8                    Level;
+  UINT16                   pIndex;
+}USB_UNION_SET;
+
 
 
 USB_DEVICE *
@@ -147,7 +171,13 @@ EFIAPI
 SetUsbViewDispaly(USB_VIEW_DISPLAY *UsbViewDisplay, UINT16 ParentIndex);
 
 VOID
-EFIAPI
-PrintMessage( USB_VIEW_DISPLAY *UsbViewDisplayPt);
+GetUsbParentPortAndInterface(
+   EFI_DEVICE_PATH_PROTOCOL* DevPath,
+   CHAR16             *String
+   );
+
+
+EFI_HII_HANDLE
+InitializeHiiPackage(EFI_HANDLE ImageHandle);
 
 #endif

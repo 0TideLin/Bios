@@ -1,0 +1,18 @@
+/=#
+
+#langdef en-US "english"
+
+#string STR_GEN_TOO_FEW     #language en-US "%H%s%N: Too few arguments\r\n"
+#string STR_GEN_TOO_MANY    #language en-US "%H%s%N: Too many arguments\r\n"
+#string STR_GEN_INV_FLAG    #language en-US "%H%s%N: Invalid flag\r\n"
+#string STR_GEN_INV_VALUE   #language en-US "%H%s%N: Invalid value for flag %H%s%N\r\n"
+
+
+#string STR_ROOT_AND_PATH   #language en-US "[%x]%H%s%N:%s\r\n"
+#string STR_ROOT_CAPABILITY #language en-US " MaxSpeed:%d\r\n PortNumber:%d\r\n Support64Bit:%x\r\n"
+#string STR_DEVICE_AND_PATH #language en-US "%s[%x]%H%s%N:%s\r\n"
+// #string STR_DEVICE_AND_PATH #language en-US "%s%H%s%N:%s\r\n"
+#string STR_DEVICE_DESC     #language en-US "%s%HManufacturer:%s%N\r\n%sClass:%02x\r\n%sSubClass:%02x\r\n%sProtocol:%02x\r\n%sUsbVer:%04x\r\n%sDevVer:%04x\r\n%sMaxPacketSize0:%02x\r\n"
+#string STR_CONFIG_DESC     #language en-US "%s%HConfigValue:%02x%N\r\n%sMaxPower:%dmA\r\n%sNumInterfaces:%d\r\n%sAttributes:%02x\r\n"
+#string STR_INTERFACE_DESC  #language en-US "%s%HInterface%d%N\r\n%sClass:%02x\r\n%sSubClass:%02x\r\n%sProtocol:%02x\r\n"
+#string STR_ENDPOINT_DESC   #language en-US "%s%HEndpoint%d%N\r\n%sAddress:%02x\r\n%sInterval:%02x\r\n%sMaxPacketSize:%02x\r\n%sAttributer:%02x\r\n"

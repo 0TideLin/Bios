@@ -1,641 +1,269 @@
 #include "UsbView.h"
 
-USB_VIEW_DISPLAY                 UsbViewDisplayArray[DISPLAY_SIZE];
+
 CHAR16                           *mFormat;
 CHAR8                            *mLanguage;
+UINTN                            mSelectPort;
 EFI_DEVICE_PATH_TO_TEXT_PROTOCOL *mDevice2TextProtocol;
+EFI_HII_HANDLE                   *mUsbViewHiiHandle;
+UINT16                            mMaxLevel;
 
-/*
-Array's Parent == Array's Index, then mean this Array is the root.
-AddressMark == 0, mean this Array is unused.
-*/
+STATIC CONST SHELL_PARAM_ITEM ParamList[] = {
+  {L"-a",  TypeFlag},
+  {L"-s",  TypeValue},
+  {NULL, TypeValue}
+};
+
+EFI_STATUS
+EFIAPI
+InitmVariable()
+{
+  EFI_STATUS Status;
+
+  mFormat = AllocatePool( sizeof(CHAR16) * 20 );
+  UnicodeSPrint(mFormat, 20, L"  ");
+
+  mLanguage = AllocatePool(10);
+  AsciiSPrint(mLanguage, 10, "en-us");
+
+
+  Status = gBS->LocateProtocol(
+                        &gEfiDevicePathToTextProtocolGuid,
+                        NULL,
+                        (VOID**)&mDevice2TextProtocol);
+
+  return Status;
+}
+
+EFI_HII_HANDLE
+InitializeHiiPackage( EFI_HANDLE ImageHandle)
+{
+  EFI_STATUS                        Status;
+  EFI_HII_PACKAGE_LIST_HEADER       *PackageList;
+  EFI_HII_HANDLE                    HiiHandle;
+
+  //
+  //Retrieve HII package list from ImageHandle
+  //
+  Status = gBS->OpenProtocol(
+                        ImageHandle,
+                        &gEfiHiiPackageListProtocolGuid,
+                        (VOID**)&PackageList,
+                        ImageHandle,
+                        NULL,
+                        EFI_OPEN_PROTOCOL_GET_PROTOCOL
+                        );
+  ASSERT_EFI_ERROR(Status);
+
+  if(EFI_ERROR(Status)){
+    // Print(L"Retrieve HII package list %r\n", Status);
+    return NULL;
+  }
+
+  //
+  //Publish HII package list to HII Database.
+  //
+  Status = gHiiDatabase->NewPackageList(
+                              gHiiDatabase,
+                              PackageList,
+                              NULL,
+                              &HiiHandle
+                              );
+  ASSERT_EFI_ERROR( Status);
+  if(EFI_ERROR(Status)) {
+    return NULL;
+  }
+
+  return HiiHandle;
+}
+
+EFI_STATUS
+EFIAPI
+PrintDeviceDesc(IN CONST EFI_HANDLE Handle, BOOLEAN AllDisplay)
+{
+  EFI_STATUS                    Status;
+  EFI_USB_IO_PROTOCOL           *UsbIo;
+  EFI_USB_DEVICE_DESCRIPTOR     DeviceDesc;
+  EFI_USB_CONFIG_DESCRIPTOR     ConfigDesc;
+  EFI_USB_INTERFACE_DESCRIPTOR  InterfaceDesc;
+  EFI_USB_ENDPOINT_DESCRIPTOR   EndpointDesc;
+  CHAR16                        *Manufacturer;
+  UINT16                        *LangIdTable;
+  UINT16                        TableSize;
+  UINT16                        FormatCount = 0;
+  Status = gBS->HandleProtocol(Handle,
+                              &gEfiUsbIoProtocolGuid,
+                              (VOID**)&UsbIo);
+  //
+  //Only UsbIo protocol can get the Desc
+  //
+  if(UsbIo == NULL || EFI_ERROR(Status) ){
+    return Status;
+  }
+
+
+  Status = UsbIo->UsbGetSupportedLanguages(UsbIo, &LangIdTable, &TableSize);
+  Status = UsbIo->UsbGetDeviceDescriptor(UsbIo, &DeviceDesc);
+
+  if (EFI_ERROR (Status) || (TableSize == 0) || (LangIdTable == NULL)) {
+    Manufacturer = L"??";
+  }
+  UsbIo->UsbGetStringDescriptor(UsbIo,
+                                LangIdTable[0],
+                                DeviceDesc.StrManufacturer,
+                                &Manufacturer);
+
+  if(!EFI_ERROR (Status)){
+    UnicodeSPrint(mFormat, 20, L"%s  ", mFormat);FormatCount++;
+    ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN(STR_DEVICE_DESC), mUsbViewHiiHandle,
+                mFormat,Manufacturer,
+                mFormat,DeviceDesc.DeviceClass,
+                mFormat,DeviceDesc.DeviceSubClass,
+                mFormat,DeviceDesc.DeviceProtocol,
+                mFormat,DeviceDesc.BcdUSB,
+                mFormat,DeviceDesc.BcdDevice,
+                mFormat,DeviceDesc.MaxPacketSize0);
+  }
+  if( !AllDisplay )
+  {
+    goto DisReturn;
+  }
+
+  Status = UsbIo->UsbGetConfigDescriptor(UsbIo, &ConfigDesc);
+  if(!EFI_ERROR (Status)){
+    UnicodeSPrint(mFormat, 20, L"%s  ", mFormat);FormatCount++;
+    ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN(STR_CONFIG_DESC), mUsbViewHiiHandle,
+                mFormat,ConfigDesc.ConfigurationValue,
+                mFormat,ConfigDesc.MaxPower*2,
+                mFormat,ConfigDesc.NumInterfaces,
+                mFormat,ConfigDesc.Attributes);
+  }
+
+  Status = UsbIo->UsbGetInterfaceDescriptor(UsbIo, &InterfaceDesc);
+  if(!EFI_ERROR (Status)){
+    UnicodeSPrint(mFormat, 20, L"%s  ", mFormat);FormatCount++;
+    ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN(STR_INTERFACE_DESC), mUsbViewHiiHandle,
+                mFormat,InterfaceDesc.InterfaceNumber,
+                mFormat,InterfaceDesc.InterfaceClass,
+                mFormat,InterfaceDesc.InterfaceSubClass,
+                mFormat,InterfaceDesc.InterfaceProtocol);
+
+    UnicodeSPrint(mFormat, 20, L"%s  ", mFormat);FormatCount++;
+    for(UINT16 EpIndex = 0; EpIndex < InterfaceDesc.NumEndpoints; EpIndex++)
+    {
+      UsbIo->UsbGetEndpointDescriptor(UsbIo, EpIndex, &EndpointDesc);
+      ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN(STR_ENDPOINT_DESC), mUsbViewHiiHandle,
+                  mFormat,EpIndex,
+                  mFormat,EndpointDesc.EndpointAddress,
+                  mFormat,EndpointDesc.Interval,
+                  mFormat,EndpointDesc.MaxPacketSize,
+                  mFormat,EndpointDesc.Attributes);
+    }
+  }
+
+DisReturn:
+  mFormat[ StrLen(mFormat) - (FormatCount*2) ] = L'\0';
+  return Status;
+}
+
 VOID
 EFIAPI
-InitUsbViewDispaly()
+PrintMessage(IN CONST EFI_HANDLE Handle, BOOLEAN AllDisplay, BOOLEAN Select)
 {
-  USB_VIEW_DISPLAY        *UsbViewDisplayArrayPt;
-  UsbViewDisplayArrayPt = UsbViewDisplayArray;
-  for(UINT16 Index = 0; Index < DISPLAY_SIZE; Index++)
-  {
-    UsbViewDisplayArrayPt->Parent = Index;
-    UsbViewDisplayArrayPt->AddressMark = 0;
-    UsbViewDisplayArrayPt->DeviceDisplay.IsHub = FALSE;
-    UsbViewDisplayArrayPt->DeviceDisplay.IsXhci = FALSE;
-    UsbViewDisplayArrayPt++;
+  EFI_DEVICE_PATH_PROTOCOL  *DevicePath;
+  CHAR16                    *UsbDevicePathString;
+  CHAR16                    *StringPath;
+  CHAR16                    *DeviceName;
+
+  DevicePath = DevicePathFromHandle( Handle );
+
+  UsbDevicePathString = AllocateZeroPool( sizeof(CHAR16)*100 );
+  GetUsbParentPortAndInterface(DevicePath, UsbDevicePathString);
+
+  if( DevicePath == NULL ){
+    StringPath = L"NULL";
+  }else{
+    StringPath = mDevice2TextProtocol->ConvertDevicePathToText(DevicePath, TRUE, TRUE);
   }
+
+  gEfiShellProtocol->GetDeviceName(Handle,
+                                  EFI_DEVICE_NAME_USE_COMPONENT_NAME|EFI_DEVICE_NAME_USE_DEVICE_PATH,
+                                  mLanguage,
+                                  &DeviceName);
+  if( DeviceName == NULL )
+  {
+    DeviceName = L"Device";
+  }
+  ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN(STR_DEVICE_AND_PATH),mUsbViewHiiHandle,
+                                mFormat, ConvertHandleToHandleIndex( Handle ),
+                                StrCmp(DeviceName, StringPath) == 0 ? L"Device" : DeviceName,
+                                UsbDevicePathString);
+  //
+  //Show Usb Io Device Info.
+  //
+
+  PrintDeviceDesc( Handle , AllDisplay);
+
+  SHELL_FREE_NON_NULL(StringPath);
+  SHELL_FREE_NON_NULL(UsbDevicePathString);
+
   return;
 }
 
-/*
-According to the AddressMark, find the UsbViewDisplay point.
-if the point is exist, then return NULL
-if the point is not exist, then return the point, and used the UsbViewDisplayArray.
-*/
-USB_VIEW_DISPLAY *
-EFIAPI
-FindUsbViewDisplay(UINT64 AddressMark)
-{
-  USB_VIEW_DISPLAY        *UsbViewDisplayArrayPt;
-  UsbViewDisplayArrayPt = UsbViewDisplayArray;
-  for(UINT16 Index = 0; Index < DISPLAY_SIZE; Index++)
-  {
-    if(UsbViewDisplayArrayPt->AddressMark == AddressMark)
-    {
-      return NULL;
-    }
-    if(UsbViewDisplayArrayPt->AddressMark == 0)
-    {
-      UsbViewDisplayArrayPt->AddressMark = AddressMark;
-      return UsbViewDisplayArrayPt;
-    }
-    UsbViewDisplayArrayPt ++;
-  }
-  return NULL;
-}
 
-/*
-Print all child's message
-*/
 VOID
 EFIAPI
-FindUsbViewChild(UINT16 ParentIndex)
+SetUnionSetpIndx(USB_UNION_SET *UnionSet ,UINT16 NumOfHandles, UINT16 Level)
 {
   UINT16 Index;
-  USB_VIEW_DISPLAY        *UsbViewDisplayArrayPt;
-  UsbViewDisplayArrayPt = UsbViewDisplayArray;
-  for(Index = 0; Index < DISPLAY_SIZE; Index++)
+
+  if(Level >= mMaxLevel) return;
+
+  for (Index = 0; Index < NumOfHandles; Index++)
   {
-    if(UsbViewDisplayArrayPt[Index].Parent == Index)continue;
-    if(UsbViewDisplayArrayPt[Index].Parent == ParentIndex && UsbViewDisplayArrayPt[Index].AddressMark != 0)
+    if( (UnionSet + Index)->Level == Level )
     {
-      PrintMessage(&UsbViewDisplayArrayPt[Index]);
-      FindUsbViewChild(Index);
-    }
-    if(UsbViewDisplayArrayPt[Index].AddressMark == 0)break;
-  }
-  return ;
-}
-
-/*
-Set the parent-child relation ship.
-*/
-VOID
-EFIAPI
-SetUsbViewDispaly(USB_VIEW_DISPLAY *UsbViewDisplay, UINT16 ParentIndex)
-{
-  UsbViewDisplay->Parent = ParentIndex;
-  return ;
-}
-/**
-  Execute a control transfer to the device.
-
-  @param  UsbBus           The USB bus driver.
-  @param  DevAddr          The device address.
-  @param  DevSpeed         The device speed.
-  @param  MaxPacket        Maximum packet size of endpoint 0.
-  @param  Request          The control transfer request.
-  @param  Direction        The direction of data stage.
-  @param  Data             The buffer holding data.
-  @param  DataLength       The length of the data.
-  @param  TimeOut          Timeout (in ms) to wait until timeout.
-  @param  Translator       The transaction translator for low/full speed device.
-  @param  UsbResult        The result of transfer.
-
-  @retval EFI_SUCCESS      The control transfer finished without error.
-  @retval Others           The control transfer failed, reason returned in UsbReslt.
-
-**/
-EFI_STATUS
-UsbHcControlTransfer (
-  IN  USB_BUS                             *UsbBus,
-  IN  UINT8                               DevAddr,
-  IN  UINT8                               DevSpeed,
-  IN  UINTN                               MaxPacket,
-  IN  EFI_USB_DEVICE_REQUEST              *Request,
-  IN  EFI_USB_DATA_DIRECTION              Direction,
-  IN  OUT VOID                            *Data,
-  IN  OUT UINTN                           *DataLength,
-  IN  UINTN                               TimeOut,
-  IN  EFI_USB2_HC_TRANSACTION_TRANSLATOR  *Translator,
-  OUT UINT32                              *UsbResult
-  )
-{
-  EFI_STATUS              Status;
-  BOOLEAN                 IsSlowDevice;
-
-  if (UsbBus->Usb2Hc != NULL) {
-    Status = UsbBus->Usb2Hc->ControlTransfer (
-                               UsbBus->Usb2Hc,
-                               DevAddr,
-                               DevSpeed,
-                               MaxPacket,
-                               Request,
-                               Direction,
-                               Data,
-                               DataLength,
-                               TimeOut,
-                               Translator,
-                               UsbResult
-                               );
-
-  } else {
-    IsSlowDevice = (BOOLEAN)(EFI_USB_SPEED_LOW == DevSpeed);
-    Status = UsbBus->UsbHc->ControlTransfer (
-                              UsbBus->UsbHc,
-                              DevAddr,
-                              IsSlowDevice,
-                              (UINT8) MaxPacket,
-                              Request,
-                              Direction,
-                              Data,
-                              DataLength,
-                              TimeOut,
-                              UsbResult
-                              );
-  }
-
-  return Status;
-}
-
-
-/**
-  USB standard control transfer support routine. This
-  function is used by USB device. It is possible that
-  the device's interfaces are still waiting to be
-  enumerated.
-
-  @param  UsbDev                The usb device.
-  @param  Direction             The direction of data transfer.
-  @param  Type                  Standard / class specific / vendor specific.
-  @param  Target                The receiving target.
-  @param  Request               Which request.
-  @param  Value                 The wValue parameter of the request.
-  @param  Index                 The wIndex parameter of the request.
-  @param  Buf                   The buffer to receive data into / transmit from.
-  @param  Length                The length of the buffer.
-
-  @retval EFI_SUCCESS           The control request is executed.
-  @retval EFI_DEVICE_ERROR      Failed to execute the control transfer.
-
-**/
-EFI_STATUS
-UsbCtrlRequest (
-  IN USB_DEVICE             *UsbDev,
-  IN EFI_USB_DATA_DIRECTION Direction,
-  IN UINTN                  Type,
-  IN UINTN                  Target,
-  IN UINTN                  Request,
-  IN UINT16                 Value,
-  IN UINT16                 Index,
-  IN OUT VOID               *Buf,
-  IN UINTN                  Length
-  )
-{
-  EFI_USB_DEVICE_REQUEST  DevReq;
-  EFI_STATUS              Status;
-  UINT32                  Result;
-  UINTN                   Len;
-
-  ASSERT ((UsbDev != NULL) && (UsbDev->Bus != NULL));
-
-  DevReq.RequestType  = USB_REQUEST_TYPE (Direction, Type, Target);
-  DevReq.Request      = (UINT8) Request;
-  DevReq.Value        = Value;
-  DevReq.Index        = Index;
-  DevReq.Length       = (UINT16) Length;
-
-  Len                 = Length;
-  Status = UsbHcControlTransfer (
-             UsbDev->Bus,
-             UsbDev->Address,
-             UsbDev->Speed,
-             UsbDev->MaxPacket0,
-             &DevReq,
-             Direction,
-             Buf,
-             &Len,
-             USB_GENERAL_DEVICE_REQUEST_TIMEOUT,
-             &UsbDev->Translator,
-             &Result
-             );
-
-  return Status;
-}
-
-
-
-/**
-  Get the standard descriptors.
-
-  @param  UsbDev                The USB device to read descriptor from.
-  @param  DescType              The type of descriptor to read.
-  @param  DescIndex             The index of descriptor to read.
-  @param  LangId                Language ID, only used to get string, otherwise set
-                                it to 0.
-  @param  Buf                   The buffer to hold the descriptor read.
-  @param  Length                The length of the buffer.
-
-  @retval EFI_SUCCESS           The descriptor is read OK.
-  @retval Others                Failed to retrieve the descriptor.
-
-**/
-EFI_STATUS
-UsbCtrlGetDesc (
-  IN  USB_DEVICE          *UsbDev,
-  IN  UINTN               DescType,
-  IN  UINTN               DescIndex,
-  IN  UINT16              LangId,
-  OUT VOID                *Buf,
-  IN  UINTN               Length
-  )
-{
-  EFI_STATUS              Status;
-
-  Status = UsbCtrlRequest (
-             UsbDev,
-             EfiUsbDataIn,
-             USB_REQ_TYPE_STANDARD,
-             USB_TARGET_DEVICE,
-             USB_REQ_GET_DESCRIPTOR,
-             (UINT16) ((DescType << 8) | DescIndex),
-             LangId,
-             Buf,
-             Length
-             );
-
-  return Status;
-}
-
-
-/**
-  Get the device descriptor for the device.
-
-  @param  UsbDev                The Usb device to retrieve descriptor from.
-
-  @retval EFI_SUCCESS           The device descriptor is returned.
-  @retval EFI_OUT_OF_RESOURCES  Failed to allocate memory.
-
-**/
-EFI_STATUS
-UsbGetDevDesc (
-  IN USB_DEVICE           *UsbDev
-  )
-{
-  USB_DEVICE_DESC         *DevDesc;
-  EFI_STATUS              Status;
-
-  DevDesc = AllocateZeroPool (sizeof (USB_DEVICE_DESC));
-
-  if (DevDesc == NULL) {
-    return EFI_OUT_OF_RESOURCES;
-  }
-
-  Status  = UsbCtrlGetDesc (
-              UsbDev,
-              USB_DESC_TYPE_DEVICE,
-              0,
-              0,
-              DevDesc,
-              sizeof (EFI_USB_DEVICE_DESCRIPTOR)
-              );
-
-  if (EFI_ERROR (Status)) {
-    gBS->FreePool (DevDesc);
-  } else {
-    UsbDev->DevDesc = DevDesc;
-  }
-
-  return Status;
-}
-
-/**
-  Retrieve the indexed string for the language. It requires two
-  steps to get a string, first to get the string's length. Then
-  the string itself.
-
-  @param  UsbDev                The usb device.
-  @param  Index                 The index the string to retrieve.
-  @param  LangId                Language ID.
-
-  @return The created string descriptor or NULL.
-
-**/
-EFI_USB_STRING_DESCRIPTOR *
-UsbGetOneString (
-  IN     USB_DEVICE       *UsbDev,
-  IN     UINT8            Index,
-  IN     UINT16           LangId
-  )
-{
-  EFI_USB_STRING_DESCRIPTOR Desc;
-  EFI_STATUS                Status;
-  UINT8                     *Buf;
-
-  //
-  // First get two bytes which contains the string length.
-  //
-  Status = UsbCtrlGetDesc (UsbDev, USB_DESC_TYPE_STRING, Index, LangId, &Desc, 2);
-
-  //
-  // Reject if Length even cannot cover itself, or odd because Unicode string byte length should be even.
-  //
-  if (EFI_ERROR (Status) ||
-      (Desc.Length < OFFSET_OF (EFI_USB_STRING_DESCRIPTOR, Length) + sizeof (Desc.Length)) ||
-      (Desc.Length % 2 != 0)
-    ) {
-    return NULL;
-  }
-
-  Buf = AllocateZeroPool (Desc.Length);
-
-  if (Buf == NULL) {
-    return NULL;
-  }
-
-  Status = UsbCtrlGetDesc (
-             UsbDev,
-             USB_DESC_TYPE_STRING,
-             Index,
-             LangId,
-             Buf,
-             Desc.Length
-             );
-
-  if (EFI_ERROR (Status)) {
-    FreePool (Buf);
-    return NULL;
-  }
-
-  return (EFI_USB_STRING_DESCRIPTOR *) Buf;
-}
-
-
-UINT8
-UsbGetConfig (
-  IN USB_DEVICE           *UsbDev
-  )
-{
-  UINT8                     Data;
-  EFI_STATUS                Status;
-
-  Status = UsbCtrlRequest (
-             UsbDev,
-             EfiUsbDataIn,
-             USB_REQ_TYPE_STANDARD,
-             USB_TARGET_DEVICE,
-             USB_REQ_GET_CONFIG,
-             0,
-             0,
-             &Data,
-             1
-             );
-
-  return Data;
-
-
-}
-
-VOID
-EFIAPI
-LsDeviceDesc(USB_VIEW_DISPLAY *UsbViewDisplay, EFI_USB_DEVICE_DESCRIPTOR Desc)
-{
-  UsbViewDisplay->DeviceDisplay.DeviceClass     = Desc.DeviceClass;
-  UsbViewDisplay->DeviceDisplay.DeviceSubClass  = Desc.DeviceSubClass;
-  UsbViewDisplay->DeviceDisplay.DeviceProtocol  = Desc.DeviceProtocol;
-  UsbViewDisplay->DeviceDisplay.MaximumDefaultEndpointSize = Desc.MaxPacketSize0;
-  UsbViewDisplay->DeviceDisplay.VendorId        = Desc.IdVendor;
-  UsbViewDisplay->DeviceDisplay.ProductId       = Desc.IdProduct;
-  UsbViewDisplay->DeviceDisplay.UsbVersion      = Desc.BcdUSB;
-  UsbViewDisplay->DeviceDisplay.NumberOfConfigurations = Desc.NumConfigurations;
-
-  // Print(L"Class:%02x,Subclass:%02x,Protocol:%02x,Maxsize0:%02x,Vendor:%04x,Product:%04x\n",
-  //             Desc.DeviceClass,
-  //             Desc.DeviceSubClass,
-  //             Desc.DeviceProtocol,
-  //             Desc.MaxPacketSize0,
-  //             Desc.IdVendor,
-  //             Desc.IdProduct);
-
-  return ;
-}
-
-VOID
-EFIAPI
-LsConfigDesc(USB_VIEW_DISPLAY *UsbViewDisplayPt,  EFI_USB_CONFIG_DESCRIPTOR Desc)
-{
-  UsbViewDisplayPt->ConfigDisplay.MaxPowerNeed = Desc.MaxPower;
-  UsbViewDisplayPt->ConfigDisplay.Attributes   = Desc.Attributes;
-  UsbViewDisplayPt->ConfigDisplay.NumberOfInterfaces = Desc.NumInterfaces;
-
-  // Print(L" MaxPower:%02x, Attribute:%02x\n",
-  //                             Desc.MaxPower,
-  //                             Desc.Attributes);
-}
-
-VOID
-EFIAPI
-LsEndpointDesc(USB_VIEW_ENDPOINT_DISPLAY *EndpointDisplayPt, USB_ENDPOINT_DESC *Desc)
-{
-  EndpointDisplayPt->Address      = Desc->Desc.EndpointAddress;
-  EndpointDisplayPt->Attribute    = Desc->Desc.Attributes;
-  // EndpointDisplayPt->Direction    = Desc->Desc
-  EndpointDisplayPt->Interval     = Desc->Desc.Interval;
-  EndpointDisplayPt->MaxPacketSize= Desc->Desc.MaxPacketSize;
-  EndpointDisplayPt->Type         = Desc->Desc.DescriptorType;
-
-  return ;
-}
-
-
-VOID
-EFIAPI
-LsInterfaceDesc(USB_VIEW_INTERFACE_DISPLAY *InterfaceDisplayPt, USB_INTERFACE_SETTING  *IfSetting)
-{
-  UINT16 Index;
-  InterfaceDisplayPt->Class              = IfSetting->Desc.InterfaceClass;
-  InterfaceDisplayPt->SubClass           = IfSetting->Desc.InterfaceSubClass;
-  InterfaceDisplayPt->Protocol           = IfSetting->Desc.InterfaceProtocol;
-  InterfaceDisplayPt->AlternateNumber    = IfSetting->Desc.AlternateSetting;
-  InterfaceDisplayPt->NumberOfEndpoints  = IfSetting->Desc.NumEndpoints;
-  InterfaceDisplayPt->InterfaceNumber    = IfSetting->Desc.InterfaceNumber;
-
-  InterfaceDisplayPt->EndpointDisplay = AllocatePool(sizeof(USB_VIEW_ENDPOINT_DISPLAY) * IfSetting->Desc.NumEndpoints );
-  for(Index = 0; Index < IfSetting->Desc.NumEndpoints; Index++)
-  {
-    LsEndpointDesc(&InterfaceDisplayPt->EndpointDisplay[Index] , IfSetting->Endpoints[Index]);
-  }
-
-  return ;
-}
-
-
-
-VOID
-EFIAPI
-DealChild(USB_DEVICE *Dev, UINT16 ParentIndex)
-{
-  UINT16 Index;
-  UINT16  UsbViewIndex;
-  USB_DEVICE *Child;
-  USB_VIEW_DISPLAY *UsbViewDisplayPt;
-
-  UsbViewDisplayPt = FindUsbViewDisplay( (UINT64)Dev );
-  if(UsbViewDisplayPt == NULL)
-  {
-    return;
-  }
-  UsbViewIndex = UsbViewDisplayPt->Parent;
-
-  SetUsbViewDispaly(UsbViewDisplayPt, ParentIndex);
-  LsDeviceDesc(UsbViewDisplayPt, Dev->DevDesc->Desc);
-
-  // Print(L" Configuration:%02x\n",Dev->ActiveConfig->Desc.ConfigurationValue);
-  LsConfigDesc(UsbViewDisplayPt ,Dev->ActiveConfig->Desc);
-
-  UsbViewDisplayPt->InterfaceDisplay = AllocatePool( sizeof(USB_VIEW_INTERFACE_DISPLAY) * Dev->NumOfInterface );
-  for(Index = 0; Index < Dev->NumOfInterface; Index++)
-  {
-    //
-    //It's hub, find child device again
-    //
-    if(Dev->Interfaces[Index]->IsHub)
-    {
-      UsbViewDisplayPt->DeviceDisplay.IsHub = TRUE;
-      for (UINT8 ChildIndex = 0; ChildIndex < Dev->Interfaces[Index]->NumOfPort; ChildIndex++)
+      //
+      //Find the Parent port and set the pIndex to parent port's index.
+      //
+      if( Level >= 2 )
       {
-        Child = UsbFindChild(Dev->Interfaces[Index], ChildIndex);
-        if(Child != NULL && Child->DisconnectFail==FALSE)
+        for( UINT16 HandleIndex = 0; HandleIndex < NumOfHandles; HandleIndex++ )
         {
-          DealChild(Child, UsbViewIndex);
+          if( (UnionSet + HandleIndex)->ParAndIf[Level - 2].ParentPort == (UnionSet + Index)->ParAndIf[Level -2].ParentPort &&
+               (HandleIndex != Index ) &&
+               (UnionSet + HandleIndex)->Level == (Level - 1) )
+          {
+            (UnionSet + Index)->pIndex = HandleIndex;
+          }
         }
       }
-    }
-    LsInterfaceDesc(&UsbViewDisplayPt->InterfaceDisplay[Index], Dev->Interfaces[Index]->IfSetting);
 
+      //
+      //The same port but not the Interface 0, set it's pIndex to the Interface 0's index.
+      //
+      if( (UnionSet + Index)->ParAndIf[Level -1].Interface != 0  )
+      {
+        for( UINT16 HandleIndex = 0; HandleIndex < NumOfHandles; HandleIndex++ )
+        {
+          if( (UnionSet + HandleIndex)->Level == Level && (HandleIndex != Index ) &&
+              (UnionSet + HandleIndex)->ParAndIf[ Level-1 ].ParentPort == (UnionSet + Index)->ParAndIf[Level-1].ParentPort)
+          {
+            (UnionSet + Index)->pIndex = HandleIndex;
+          }
+        }
+      }
 
-  }
-  return ;
-}
+    }//end if
+  }//end for
 
+  return SetUnionSetpIndx(UnionSet, NumOfHandles, Level+1);
 
-
-/**
-  Find the child device on the hub's port.
-
-  @param  HubIf                 The hub interface.
-  @param  Port                  The port of the hub this child is connected to.
-
-  @return The device on the hub's port, or NULL if there is none.
-
-**/
-USB_DEVICE *
-UsbFindChild (
-  IN USB_INTERFACE        *HubIf,
-  IN UINT8                Port
-  )
-{
-  USB_DEVICE              *Device;
-  USB_BUS                 *Bus;
-  UINTN                   Index;
-
-  Bus = HubIf->Device->Bus;
-
-  //
-  // Start checking from device 1, device 0 is the root hub
-  //
-  for (Index = 1; Index < Bus->MaxDevices; Index++) {
-    Device = Bus->Devices[Index];
-
-    if ((Device != NULL) && (Device->ParentAddr == HubIf->Device->Address) &&
-        (Device->ParentPort == Port)) {
-
-      return Device;
-    }
-  }
-
-  return NULL;
-}
-
-VOID
-EFIAPI
-PrintMessage( USB_VIEW_DISPLAY *UsbViewDisplayPt)
-{
-  USB_VIEW_INTERFACE_DISPLAY *InterfaceDisplayPt;
-  USB_VIEW_ENDPOINT_DISPLAY  *EndpointDisplayPt;
-  if(UsbViewDisplayPt->DeviceDisplay.IsHub && UsbViewDisplayPt->DeviceDisplay.IsXhci)
-  {
-    Print(L"Xhci:------------------\n");
-  }
-  else if(UsbViewDisplayPt->DeviceDisplay.IsHub && !UsbViewDisplayPt->DeviceDisplay.IsXhci){
-    Print(L"Hub:-------------------\n");
-  }else{
-
-  }
-  Print(L"Class:%02x\nSubClass:%02x\nProtocol:%02x\nMaxEpSize:%02x\nVendorId:%04x\nProductId:%04x\nUsbVersion:%04x\nNumofConfig:%02x\n",
-                            UsbViewDisplayPt->DeviceDisplay.DeviceClass,
-                            UsbViewDisplayPt->DeviceDisplay.DeviceSubClass,
-                            UsbViewDisplayPt->DeviceDisplay.DeviceProtocol,
-                            UsbViewDisplayPt->DeviceDisplay.MaximumDefaultEndpointSize,
-                            UsbViewDisplayPt->DeviceDisplay.VendorId,
-                            UsbViewDisplayPt->DeviceDisplay.ProductId,
-                            UsbViewDisplayPt->DeviceDisplay.UsbVersion,
-                            UsbViewDisplayPt->DeviceDisplay.NumberOfConfigurations);
-  Print(L"  MaxPower:%02x\n  Attributes:%02x\n  NumofInterfaces:%02x\n",
-                            UsbViewDisplayPt->ConfigDisplay.MaxPowerNeed,
-                            UsbViewDisplayPt->ConfigDisplay.Attributes,
-                            UsbViewDisplayPt->ConfigDisplay.NumberOfInterfaces);
-
-  InterfaceDisplayPt = UsbViewDisplayPt->InterfaceDisplay;
-  for(UINT16 Index = 0; Index < UsbViewDisplayPt->ConfigDisplay.NumberOfInterfaces; Index++)
-  {
-    Print(L"    InterfaceNumber:%d\n    Class:%02x\n    SubClass:%02x\n    Protocol:%02x\n    AlternateNumber:%02x\n",
-                            InterfaceDisplayPt->InterfaceNumber,
-                            InterfaceDisplayPt->Class,
-                            InterfaceDisplayPt->SubClass,
-                            InterfaceDisplayPt->Protocol,
-                            InterfaceDisplayPt->AlternateNumber
-                            );
-    EndpointDisplayPt = InterfaceDisplayPt->EndpointDisplay;
-    for(UINT16 EpIndex = 0; EpIndex < InterfaceDisplayPt->NumberOfEndpoints; EpIndex++)
-    {
-      Print(L"      Endpoint%d\n", EpIndex);
-      Print(L"      MaxPacketSize:%04x\n      Address:%02x\n      Interval:%04x\n      Attribute:%02x\n      Type:%2x\n",
-                              EndpointDisplayPt->MaxPacketSize,
-                              EndpointDisplayPt->Address,
-                              EndpointDisplayPt->Interval,
-                              EndpointDisplayPt->Attribute,
-                              EndpointDisplayPt->Type);
-      EndpointDisplayPt++;
-    }
-    InterfaceDisplayPt++;
-  }
-  Print(L"-------------------------\n");
-  return ;
-}
-
-VOID
-EFIAPI
-LsMessage()
-{
-  UINT16 Index;
-  USB_VIEW_DISPLAY        *UsbViewDisplayArrayPt;
-  UsbViewDisplayArrayPt = UsbViewDisplayArray;
-  for(Index = 0; Index < DISPLAY_SIZE; Index++)
-  {
-    if(UsbViewDisplayArrayPt->Parent == Index &&UsbViewDisplayArrayPt->AddressMark != 0)
-    {
-      PrintMessage( UsbViewDisplayArrayPt );
-      FindUsbViewChild(Index);
-    }
-    UsbViewDisplayArrayPt++;
-  }
-
-  return;
 }
 
 EFI_STATUS
 EFIAPI
-GetRootHubCapability( EFI_HANDLE Handle)
+PrintRootHubDesc(IN CONST EFI_HANDLE Handle)
 {
   EFI_STATUS Status;
   EFI_USB2_HC_PROTOCOL  *Usb2Hc;
@@ -646,91 +274,130 @@ GetRootHubCapability( EFI_HANDLE Handle)
                     &gEfiUsb2HcProtocolGuid,
                     (VOID**)&Usb2Hc);
   Status = Usb2Hc->GetCapability(Usb2Hc, &MaxSpeed, &PortNumber, &Is64Bit);
-  Print(L"MaxSpeed:%02x, PortNumber:%02x, Is64Bit:%02x\n",
-                                            MaxSpeed,
-                                            PortNumber,
-                                            Is64Bit);
+  ShellPrintHiiEx( -1, -1, NULL, STRING_TOKEN(STR_ROOT_CAPABILITY), mUsbViewHiiHandle,
+                                                                    MaxSpeed,
+                                                                    PortNumber,
+                                                                    Is64Bit);
+  //
+  //Get info by Pci io?
+  //
   return Status;
 }
 
-
-EFI_DEVICE_PATH_PROTOCOL*
-WalkthroughDevicePath(
-   EFI_DEVICE_PATH_PROTOCOL* DevPath
+VOID
+UnionSetParentPortAndInterface(
+   EFI_DEVICE_PATH_PROTOCOL* DevPath,
+   USB_UNION_SET            *UnionSet
    )
 {
+  USB_DEVICE_PATH           *UsbDevicePath;
+  EFI_DEVICE_PATH_PROTOCOL  *pDevPath=DevPath;
+  UnionSet->Level = 0;
+  if(DevPath == NULL){
+    UnionSet->Level = 0;
+    return ;
+  }
 
-     EFI_DEVICE_PATH_PROTOCOL* pDevPath=DevPath;
-     while(!IsDevicePathEnd(pDevPath)){
-      Print(L"(%x,%x,%x,%x) ",pDevPath->Length[1], pDevPath->Length[0],pDevPath->Type, pDevPath->SubType);
-      pDevPath= NextDevicePathNode(pDevPath);
-     }
-     Print(L"\n");
-     return pDevPath;
+
+  while(!IsDevicePathEnd(pDevPath)){
+    if(pDevPath->Type == MESSAGING_DEVICE_PATH && pDevPath->SubType == MSG_USB_DP){
+      UsbDevicePath = (USB_DEVICE_PATH*)pDevPath;
+      UnionSet->ParAndIf[UnionSet->Level].ParentPort = UsbDevicePath->ParentPortNumber;
+      UnionSet->ParAndIf[UnionSet->Level].Interface  = UsbDevicePath->InterfaceNumber;
+      UnionSet->Level ++;
+    }
+    pDevPath = NextDevicePathNode(pDevPath);
+  }
+
+  mMaxLevel = (mMaxLevel > UnionSet->Level) ? mMaxLevel : UnionSet->Level;
+  return ;
+}
+
+VOID
+GetUsbParentPortAndInterface(
+   EFI_DEVICE_PATH_PROTOCOL* DevPath,
+   CHAR16             *String
+   )
+{
+  USB_DEVICE_PATH           *UsbDevicePath;
+  EFI_DEVICE_PATH_PROTOCOL  *pDevPath=DevPath;
+  if(DevPath == NULL){
+    String = L"None";
+    return ;
+  }
+
+  while(!IsDevicePathEnd(pDevPath)){
+
+    if(pDevPath->Type == MESSAGING_DEVICE_PATH && pDevPath->SubType == MSG_USB_DP){
+      UsbDevicePath = (USB_DEVICE_PATH*)pDevPath;
+      UnicodeSPrint(String + StrLen(String), 100, L"||Port%d-If%d", UsbDevicePath->ParentPortNumber, UsbDevicePath->InterfaceNumber);
+    }
+    pDevPath = NextDevicePathNode(pDevPath);
+  }
+  return ;
+}
+
+VOID
+FindChildDevice(EFI_HANDLE *HandleBuffer,
+                USB_UNION_SET *UnionSet,
+                UINT16 ParentIndex,
+                BOOLEAN AllDisplay,
+                BOOLEAN Select,
+                UINT8 Level,
+                UINTN NumOfHandles)
+{
+  UINT16  Index;
+  for( Index = 0; Index < NumOfHandles; Index++ )
+  {
+
+  }
 }
 
 //
 //Device
 //
 EFI_STATUS
-EnumerUsbDevieInfo(EFI_HANDLE *HandleBuffer, UINTN NumOfHandles)
+EnumerUsbDevieInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN AllDisplay, BOOLEAN Select )
 {
   EFI_STATUS                Status;
   UINT16                    Index;
   EFI_DEVICE_PATH_PROTOCOL  *DevicePath;
-  CHAR16                    *StringPath;
 
-  EFI_HANDLE                *ChildControllerHandleBuffer = NULL;
-  UINTN                     ChildControllerHandleCount;
+  USB_UNION_SET             *UnionSet;
+  UnionSet = AllocateZeroPool(sizeof(USB_UNION_SET) * NumOfHandles );
 
-
-
-  for( Index = 0; Index < NumOfHandles; Index++)
+  for( Index = 0; Index < NumOfHandles; Index++ )
   {
-    DevicePath = DevicePathFromHandle(HandleBuffer[Index]);
-    if(DevicePath == NULL){
-      // Print(L"Not DevicePath\n", Status);
-      StringPath = L"NULL";
-    }else{
-      StringPath = mDevice2TextProtocol->ConvertDevicePathToText(DevicePath, TRUE, TRUE);
+    DevicePath = DevicePathFromHandle( HandleBuffer[Index] );
+    UnionSetParentPortAndInterface(DevicePath, (UnionSet + Index) );
+    (UnionSet + Index)->pIndex = Index;
+  }
+
+  SetUnionSetpIndx(UnionSet, NumOfHandles, 1);
+
+
+  for( Index = 0; Index < NumOfHandles; Index++ )
+  {
+    if( (UnionSet + Index)->pIndex == Index && (UnionSet + Index)->Level == 1)
+    {
+      //
+      //If select the handle index, only print the select one detail message. Otherwise, print all device's message.
+      //
+      if( !Select || ( Select && ConvertHandleToHandleIndex( HandleBuffer[Index] ) == mSelectPort ) )
+      {
+        PrintMessage(HandleBuffer[Index], AllDisplay, Select);
+
+        if(Select)
+        {
+          return Status;
+        }
+      }
+
+      //
+      //Find child device
+      //
+      FindChildDevice( HandleBuffer, UnionSet, Index, AllDisplay, Select, 1, NumOfHandles);
     }
-
-
-    //
-    //Look up the parent-child relationship about the handle.
-    //
-    Status = ParseHandleDatabaseForChildControllers(
-                                      HandleBuffer[Index],
-                                      &ChildControllerHandleCount,
-                                      &ChildControllerHandleBuffer
-                                      );
-    //
-    //Print message
-    //
-    Print(L"%s%s:",mFormat, L"DEVICE" );
-    Print(L"[%02x]:%s\n", ConvertHandleToHandleIndex(HandleBuffer[Index]),
-                        StringPath);
-
-    if(ChildControllerHandleCount == 0){
-        // Print(L"%sNo Child\n", mFormat);
-    }else{
-
-        UnicodeSPrint(mFormat, 20, L"%s--", mFormat);
-        EnumerUsbDevieInfo(ChildControllerHandleBuffer, ChildControllerHandleCount);
-        mFormat[ StrLen(mFormat) - 2 ] = L'\0';
-        // Status = gEfiShellProtocol->GetDeviceName(ChildControllerHandleBuffer[HandleIndex],
-        //                                           EFI_DEVICE_NAME_USE_COMPONENT_NAME|EFI_DEVICE_NAME_USE_DEVICE_PATH,
-        //                                           mLanguage,
-        //                                           &DeviceName);
-        // Print(L"Child[%X]:%s\n", ConvertHandleToHandleIndex(ChildControllerHandleBuffer[HandleIndex]),
-        //                           DeviceName );
-    }
-
-    if(StringPath != NULL){
-      FreePool(StringPath);
-    }
-    SHELL_FREE_NON_NULL(ChildControllerHandleBuffer);
-    // WalkthroughDevicePath(DevicePath);
 
   }
 
@@ -742,29 +409,30 @@ EnumerUsbDevieInfo(EFI_HANDLE *HandleBuffer, UINTN NumOfHandles)
 //Roothub
 //
 EFI_STATUS
-EnumerUsbRootInfo(EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN Relationship)
+EnumerUsbRootInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN AllDisplay, BOOLEAN Select)
 {
   EFI_STATUS                Status;
   UINT16                    Index;
   EFI_DEVICE_PATH_PROTOCOL  *DevicePath;
   CHAR16                    *StringPath;
   CHAR16                    *DeviceName;
-  EFI_HANDLE                *ChildControllerHandleBuffer = NULL;
+  EFI_HANDLE                *ChildControllerHandleBuffer;
   UINTN                     ChildControllerHandleCount;
-
-  // UINTN                     NumOfUsbIoHandles;
-  // EFI_HANDLE                *UsbIoHandleBuffer;
-  // Status = gBS->LocateHandleBuffer(
-  //                               ByProtocol,
-  //                               &gEfiUsbIoProtocolGuid,
-  //                               NULL,
-  //                               &NumOfUsbIoHandles,
-  //                               &UsbIoHandleBuffer
-  //                               );
-  // UINT16 tmp;
-  // for( tmp = 0; tmp < NumOfUsbIoHandles; tmp++)
+  // //for debug
+  // EFI_USB_IO_PROTOCOL        *UsbIo;
+  // UINTN                      NumOfUsbIoHandles;
+  // EFI_HANDLE                 *UsbIoHandleBuffer;
+  // Status = gBS->LocateHandleBuffer( ByProtocol,
+  //                                   &gEfiUsbIoProtocolGuid,
+  //                                   NULL,
+  //                                   &NumOfUsbIoHandles,
+  //                                   &UsbIoHandleBuffer);
+  // for( UINT16 UsbIoIndex = 0; UsbIoIndex < NumOfUsbIoHandles; UsbIoIndex++ )
   // {
-  //   Print(L"[%02x] ", ConvertHandleToHandleIndex(UsbIoHandleBuffer[tmp]));
+  //   Status = gBS->HandleProtocol( UsbIoHandleBuffer[UsbIoIndex],
+  //                                 &gEfiUsbIoProtocolGuid,
+  //                                 (VOID**)&UsbIo);
+  //   Print(L"[%02x] ", ConvertHandleToHandleIndex( UsbIoHandleBuffer[UsbIoIndex] ) );
   // }
   // Print(L"\n");
 
@@ -776,7 +444,7 @@ EnumerUsbRootInfo(EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN Relation
     //
     //Get the DeviceName and DevicePath text
     //
-    DevicePath = DevicePathFromHandle(HandleBuffer[Index]);
+    DevicePath = DevicePathFromHandle( HandleBuffer[Index] );
     if(DevicePath == NULL){
       Print(L"Root not DevicePath:%r\n", Status);
       continue;
@@ -791,41 +459,53 @@ EnumerUsbRootInfo(EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN Relation
     //
     //Look up the parent-child relationship about the handle.
     //
+    ChildControllerHandleBuffer = NULL;
     Status = ParseHandleDatabaseForChildControllers(
                                       HandleBuffer[Index],
                                       &ChildControllerHandleCount,
                                       &ChildControllerHandleBuffer
                                       );
     //
-    //Print message
+    //If select the handle index, only print the select one detail message. Otherwise, print all device's message.
     //
-    Print(L"[%2x]%s: %s\n",ConvertHandleToHandleIndex(HandleBuffer[Index]),
+    if( !Select || ( Select && ConvertHandleToHandleIndex( HandleBuffer[Index] ) == mSelectPort ) )
+    {
+      ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN(STR_ROOT_AND_PATH), mUsbViewHiiHandle,
+                          ConvertHandleToHandleIndex(HandleBuffer[Index]),
                           (DeviceName != NULL ? DeviceName : L"Unknown"),
                           StringPath);
+      //
+      //Print detail message
+      //
+      if( AllDisplay )
+      {
+        PrintRootHubDesc(HandleBuffer[Index]);
+      }
 
-    if(ChildControllerHandleCount == 0){
+      if( Select )
+      {
+        return Status;
+      }
+    }
 
-    }else{
-      UnicodeSPrint(mFormat, 20, L"%s--", mFormat);
-      EnumerUsbDevieInfo(ChildControllerHandleBuffer,  ChildControllerHandleCount);
-      mFormat[ StrLen(mFormat) - 2 ] = L'\0';
-      // for(UINT16 HandleIndex = 0; HandleIndex < ChildControllerHandleCount && Relationship; HandleIndex++)
-      // {
-      //   Status = gEfiShellProtocol->GetDeviceName(ChildControllerHandleBuffer[HandleIndex],
-      //                                             EFI_DEVICE_NAME_USE_COMPONENT_NAME|EFI_DEVICE_NAME_USE_DEVICE_PATH,
-      //                                             mLanguage,
-      //                                             &DeviceName);
-      //   Print(L"Child[%X]:%s\n", ConvertHandleToHandleIndex(ChildControllerHandleBuffer[HandleIndex]),
-      //                             DeviceName );
-      // }
+
+
+    //
+    //Print child device message.
+    //
+    if( ChildControllerHandleCount == 0 )
+    {
+
+    } else {
+      UnicodeSPrint( mFormat, 20, L"%s  ", mFormat );
+      EnumerUsbDevieInfo( ChildControllerHandleBuffer,  ChildControllerHandleCount, AllDisplay, Select );
+      mFormat[ StrLen( mFormat ) - 2 ] = L'\0';
 
     }
 
-    if(StringPath != NULL){
-      FreePool(StringPath);
-    }
+
+    SHELL_FREE_NON_NULL(StringPath);
     SHELL_FREE_NON_NULL(ChildControllerHandleBuffer);
-    // WalkthroughDevicePath(DevicePath);
   }
 
   return Status;
@@ -833,60 +513,111 @@ EnumerUsbRootInfo(EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN Relation
 
 EFI_STATUS
 EFIAPI
-UsbViewMain(
+RunUsbView(
   IN EFI_HANDLE        ImageHandle,
   IN EFI_SYSTEM_TABLE  *SystemTable
 )
 {
   EFI_STATUS              Status;
+  LIST_ENTRY              *CheckPackage;
+  CHAR16                  *ProblemParam;
+  CONST CHAR16            *CommandLine;
+  BOOLEAN                 AllDisplay = FALSE;
+  BOOLEAN                 Select = FALSE;
+  UINTN                   ParamCount;
   UINTN                   NumOfUsbHcHandles;
   EFI_HANDLE              *UsbHcHandleBuffer;
-  // EFI_USB_IO_PROTOCOL     *UsbIo;
-  // USB_BUS                 *Bus;
-  // USB_INTERFACE           *UsbIf;
-  // USB_INTERFACE           *RootIf;
-  // USB_DEVICE              *RootHub;
-  // USB_DEVICE              *Child;
-  // EFI_USB_PORT_STATUS     PortStatus;
-  // USB_VIEW_DISPLAY        *UsbViewDisplayPt;
+
+  Status = ShellInitialize();
+  if( EFI_ERROR(Status) ){
+    return SHELL_ABORTED;
+  }
 
   //
-  //Init
+  //Init module variable
   //
-  mFormat = AllocatePool( sizeof(CHAR16) * 20 );
-  UnicodeSPrint(mFormat, 20, L"--");
-
-  mLanguage = AllocatePool(10);
-  AsciiSPrint(mLanguage, 10, "en-us");
-
-
-  Status = gBS->LocateProtocol(
-                        &gEfiDevicePathToTextProtocolGuid,
-                        NULL,
-                        (VOID**)&mDevice2TextProtocol);
+  Status = InitmVariable();
 
   if(EFI_ERROR(Status)){
-    Print(L"Get Device2TextProtocol %r\n", Status);
+    Print(L"Init mVariable %r\n", Status);
     return Status;
   }
 
-  Status = gBS->LocateHandleBuffer(
-                                  ByProtocol,
-                                  &gEfiUsb2HcProtocolGuid,
-                                  NULL,
-                                  &NumOfUsbHcHandles,
-                                  &UsbHcHandleBuffer
+  //
+  //Parse the command line.
+  //
+  Status = ShellCommandLineParse(
+    ParamList,
+    &CheckPackage,
+    &ProblemParam,
+    TRUE
+  );
+
+  if( EFI_ERROR(Status) ){
+    if( (Status == EFI_VOLUME_CORRUPTED) && (ProblemParam != NULL))
+    {
+      SHELL_FREE_NON_NULL( ProblemParam);
+    }else {
+      ASSERT(FALSE);
+    }
+    goto Error;
+  }
+
+  //
+  //Check the number of parameters
+  //
+  Status = EFI_INVALID_PARAMETER;
+  ParamCount = ShellCommandLineGetCount( CheckPackage);
+  // Print(L"Param Count:%d\n", ParamCount);
+
+  if( ParamCount > 2 )
+  {
+    ShellPrintHiiEx( -1, -1, NULL, STRING_TOKEN(STR_GEN_TOO_MANY), mUsbViewHiiHandle, L"UsbView" );
+    ShellCommandLineFreeVarList( CheckPackage );
+    return (SHELL_INVALID_PARAMETER);
+  }
+
+  if( ShellCommandLineGetFlag( CheckPackage, L"-a") )
+  {
+    AllDisplay = TRUE;
+  }
+
+  if( ShellCommandLineGetFlag( CheckPackage, L"-s" ) )
+  {
+    AllDisplay = TRUE;
+    Select = TRUE;
+    CommandLine = ShellCommandLineGetValue( CheckPackage, L"-s" );
+    if( CommandLine == NULL)
+    {
+      ShellPrintHiiEx( -1, -1, NULL, STRING_TOKEN(STR_GEN_TOO_FEW), mUsbViewHiiHandle, L"-s" );
+    }
+    Status = ShellConvertStringToUint64( CommandLine, &mSelectPort, TRUE, FALSE );
+    // Print(L"%x\n", mSelectPort);
+  }
+
+
+  Status = gBS->LocateHandleBuffer( ByProtocol,
+                                    &gEfiUsb2HcProtocolGuid,
+                                    NULL,
+                                    &NumOfUsbHcHandles,
+                                    &UsbHcHandleBuffer
                                   );
 
 
-  if(EFI_ERROR(Status)){
+  if( EFI_ERROR( Status ) )
+  {
     Print(L"HandleBuffer:%r\n", Status);
     return Status;
   }
 
-  Print(L"Hc Handles:%d\n", NumOfUsbHcHandles);
-  EnumerUsbRootInfo(UsbHcHandleBuffer, NumOfUsbHcHandles, TRUE);
+  // Print(L"Hc Handles:%d\n", NumOfUsbHcHandles);
+  mMaxLevel = 0;
+  EnumerUsbRootInfo( UsbHcHandleBuffer, NumOfUsbHcHandles, AllDisplay, Select );
 
-
+Error:
+  SHELL_FREE_NON_NULL( UsbHcHandleBuffer );
+  SHELL_FREE_NON_NULL( mFormat );
+  SHELL_FREE_NON_NULL( mLanguage );
+  SHELL_FREE_NON_NULL( mDevice2TextProtocol );
   return Status;
 }
