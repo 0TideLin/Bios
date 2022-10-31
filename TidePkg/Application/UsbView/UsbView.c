@@ -6,7 +6,6 @@ CHAR8                            *mLanguage;
 UINTN                            mSelectPort;
 EFI_DEVICE_PATH_TO_TEXT_PROTOCOL *mDevice2TextProtocol;
 EFI_HII_HANDLE                   *mUsbViewHiiHandle;
-UINT16                            mMaxLevel;
 
 STATIC CONST SHELL_PARAM_ITEM ParamList[] = {
   {L"-a",  TypeFlag},
@@ -20,8 +19,8 @@ InitmVariable()
 {
   EFI_STATUS Status;
 
-  mFormat = AllocatePool( sizeof(CHAR16) * 20 );
-  UnicodeSPrint(mFormat, 20, L"  ");
+  mFormat = AllocatePool( sizeof(CHAR16) * 100 );
+  UnicodeSPrint(mFormat, 100, L"  ");
 
   mLanguage = AllocatePool(10);
   AsciiSPrint(mLanguage, 10, "en-us");
@@ -94,6 +93,10 @@ PrintDeviceDesc(IN CONST EFI_HANDLE Handle, BOOLEAN AllDisplay)
   Status = gBS->HandleProtocol(Handle,
                               &gEfiUsbIoProtocolGuid,
                               (VOID**)&UsbIo);
+  if( !AllDisplay )
+  {
+    return Status;
+  }
   //
   //Only UsbIo protocol can get the Desc
   //
@@ -113,10 +116,12 @@ PrintDeviceDesc(IN CONST EFI_HANDLE Handle, BOOLEAN AllDisplay)
                                 DeviceDesc.StrManufacturer,
                                 &Manufacturer);
 
+   ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN(STR_DEVICE_MANUFACTURER), mUsbViewHiiHandle,
+                mFormat,Manufacturer);
+
   if(!EFI_ERROR (Status)){
-    UnicodeSPrint(mFormat, 20, L"%s  ", mFormat);FormatCount++;
+    UnicodeSPrint(mFormat, 100, L"%s  ", mFormat);FormatCount++;
     ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN(STR_DEVICE_DESC), mUsbViewHiiHandle,
-                mFormat,Manufacturer,
                 mFormat,DeviceDesc.DeviceClass,
                 mFormat,DeviceDesc.DeviceSubClass,
                 mFormat,DeviceDesc.DeviceProtocol,
@@ -124,14 +129,10 @@ PrintDeviceDesc(IN CONST EFI_HANDLE Handle, BOOLEAN AllDisplay)
                 mFormat,DeviceDesc.BcdDevice,
                 mFormat,DeviceDesc.MaxPacketSize0);
   }
-  if( !AllDisplay )
-  {
-    goto DisReturn;
-  }
 
   Status = UsbIo->UsbGetConfigDescriptor(UsbIo, &ConfigDesc);
   if(!EFI_ERROR (Status)){
-    UnicodeSPrint(mFormat, 20, L"%s  ", mFormat);FormatCount++;
+    UnicodeSPrint(mFormat, 100, L"%s  ", mFormat);FormatCount++;
     ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN(STR_CONFIG_DESC), mUsbViewHiiHandle,
                 mFormat,ConfigDesc.ConfigurationValue,
                 mFormat,ConfigDesc.MaxPower*2,
@@ -141,14 +142,14 @@ PrintDeviceDesc(IN CONST EFI_HANDLE Handle, BOOLEAN AllDisplay)
 
   Status = UsbIo->UsbGetInterfaceDescriptor(UsbIo, &InterfaceDesc);
   if(!EFI_ERROR (Status)){
-    UnicodeSPrint(mFormat, 20, L"%s  ", mFormat);FormatCount++;
+    UnicodeSPrint(mFormat, 100, L"%s  ", mFormat);FormatCount++;
     ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN(STR_INTERFACE_DESC), mUsbViewHiiHandle,
                 mFormat,InterfaceDesc.InterfaceNumber,
                 mFormat,InterfaceDesc.InterfaceClass,
                 mFormat,InterfaceDesc.InterfaceSubClass,
                 mFormat,InterfaceDesc.InterfaceProtocol);
 
-    UnicodeSPrint(mFormat, 20, L"%s  ", mFormat);FormatCount++;
+    UnicodeSPrint(mFormat, 100, L"%s  ", mFormat);FormatCount++;
     for(UINT16 EpIndex = 0; EpIndex < InterfaceDesc.NumEndpoints; EpIndex++)
     {
       UsbIo->UsbGetEndpointDescriptor(UsbIo, EpIndex, &EndpointDesc);
@@ -161,7 +162,6 @@ PrintDeviceDesc(IN CONST EFI_HANDLE Handle, BOOLEAN AllDisplay)
     }
   }
 
-DisReturn:
   mFormat[ StrLen(mFormat) - (FormatCount*2) ] = L'\0';
   return Status;
 }
@@ -195,9 +195,11 @@ PrintMessage(IN CONST EFI_HANDLE Handle, BOOLEAN AllDisplay, BOOLEAN Select)
     DeviceName = L"Device";
   }
   ShellPrintHiiEx(-1, -1, NULL, STRING_TOKEN(STR_DEVICE_AND_PATH),mUsbViewHiiHandle,
-                                mFormat, ConvertHandleToHandleIndex( Handle ),
-                                StrCmp(DeviceName, StringPath) == 0 ? L"Device" : DeviceName,
-                                UsbDevicePathString);
+                                mFormat,
+                                ConvertHandleToHandleIndex( Handle ),
+                                UsbDevicePathString,
+                                StrCmp(DeviceName, StringPath) == 0 ? L"Device" : DeviceName
+                                );
   //
   //Show Usb Io Device Info.
   //
@@ -211,55 +213,6 @@ PrintMessage(IN CONST EFI_HANDLE Handle, BOOLEAN AllDisplay, BOOLEAN Select)
 }
 
 
-VOID
-EFIAPI
-SetUnionSetpIndx(USB_UNION_SET *UnionSet ,UINT16 NumOfHandles, UINT16 Level)
-{
-  UINT16 Index;
-
-  if(Level >= mMaxLevel) return;
-
-  for (Index = 0; Index < NumOfHandles; Index++)
-  {
-    if( (UnionSet + Index)->Level == Level )
-    {
-      //
-      //Find the Parent port and set the pIndex to parent port's index.
-      //
-      if( Level >= 2 )
-      {
-        for( UINT16 HandleIndex = 0; HandleIndex < NumOfHandles; HandleIndex++ )
-        {
-          if( (UnionSet + HandleIndex)->ParAndIf[Level - 2].ParentPort == (UnionSet + Index)->ParAndIf[Level -2].ParentPort &&
-               (HandleIndex != Index ) &&
-               (UnionSet + HandleIndex)->Level == (Level - 1) )
-          {
-            (UnionSet + Index)->pIndex = HandleIndex;
-          }
-        }
-      }
-
-      //
-      //The same port but not the Interface 0, set it's pIndex to the Interface 0's index.
-      //
-      if( (UnionSet + Index)->ParAndIf[Level -1].Interface != 0  )
-      {
-        for( UINT16 HandleIndex = 0; HandleIndex < NumOfHandles; HandleIndex++ )
-        {
-          if( (UnionSet + HandleIndex)->Level == Level && (HandleIndex != Index ) &&
-              (UnionSet + HandleIndex)->ParAndIf[ Level-1 ].ParentPort == (UnionSet + Index)->ParAndIf[Level-1].ParentPort)
-          {
-            (UnionSet + Index)->pIndex = HandleIndex;
-          }
-        }
-      }
-
-    }//end if
-  }//end for
-
-  return SetUnionSetpIndx(UnionSet, NumOfHandles, Level+1);
-
-}
 
 EFI_STATUS
 EFIAPI
@@ -292,9 +245,15 @@ UnionSetParentPortAndInterface(
 {
   USB_DEVICE_PATH           *UsbDevicePath;
   EFI_DEVICE_PATH_PROTOCOL  *pDevPath=DevPath;
+  UINT16                    Index;
+  for(Index = 0; Index < 8;Index++)
+  {
+    UnionSet->ParAndIf[Index].Interface  = 0xFF;
+    UnionSet->ParAndIf[Index].ParentPort = 0xFF;
+  }
   UnionSet->Level = 0;
+
   if(DevPath == NULL){
-    UnionSet->Level = 0;
     return ;
   }
 
@@ -304,12 +263,11 @@ UnionSetParentPortAndInterface(
       UsbDevicePath = (USB_DEVICE_PATH*)pDevPath;
       UnionSet->ParAndIf[UnionSet->Level].ParentPort = UsbDevicePath->ParentPortNumber;
       UnionSet->ParAndIf[UnionSet->Level].Interface  = UsbDevicePath->InterfaceNumber;
-      UnionSet->Level ++;
+      UnionSet->Level++;
     }
     pDevPath = NextDevicePathNode(pDevPath);
   }
 
-  mMaxLevel = (mMaxLevel > UnionSet->Level) ? mMaxLevel : UnionSet->Level;
   return ;
 }
 
@@ -330,7 +288,7 @@ GetUsbParentPortAndInterface(
 
     if(pDevPath->Type == MESSAGING_DEVICE_PATH && pDevPath->SubType == MSG_USB_DP){
       UsbDevicePath = (USB_DEVICE_PATH*)pDevPath;
-      UnicodeSPrint(String + StrLen(String), 100, L"||Port%d-If%d", UsbDevicePath->ParentPortNumber, UsbDevicePath->InterfaceNumber);
+      UnicodeSPrint(String + StrLen(String), 100, L"/Port%d-If%d", UsbDevicePath->ParentPortNumber, UsbDevicePath->InterfaceNumber);
     }
     pDevPath = NextDevicePathNode(pDevPath);
   }
@@ -338,20 +296,98 @@ GetUsbParentPortAndInterface(
 }
 
 VOID
-FindChildDevice(EFI_HANDLE *HandleBuffer,
-                USB_UNION_SET *UnionSet,
-                UINT16 ParentIndex,
-                BOOLEAN AllDisplay,
-                BOOLEAN Select,
-                UINT8 Level,
-                UINTN NumOfHandles)
+InsertNextIndex(UINT16 Index, INDEX_LIST *IndexList)
 {
-  UINT16  Index;
-  for( Index = 0; Index < NumOfHandles; Index++ )
-  {
+  INDEX_LIST *NewList;
+  INDEX_LIST *NextList;
 
+  NewList = (INDEX_LIST*) AllocatePool( sizeof(INDEX_LIST) );
+  NewList->Index = Index;
+
+  if(IndexList->Next == NULL)
+  {
+    NewList->Forward = IndexList;
+    NewList->Next    = NULL;
+    IndexList->Next  = NewList;
+  } else {
+    NextList = IndexList->Next;
+
+    NewList->Forward = IndexList;
+    NewList->Next    = NextList;
+
+    IndexList->Next   = NewList;
+    NextList->Forward = NewList;
   }
+  return ;
 }
+
+VOID
+InsertForwardIndex(UINT16 Index, INDEX_LIST *IndexList)
+{
+  InsertNextIndex(Index, IndexList->Forward);
+}
+
+BOOLEAN
+IsNext(USB_UNION_SET *UnionSet, UINT16 Index, UINT16 ListData, UINT16 Level)
+{
+  if(UnionSet[Index].ParAndIf[Level].ParentPort == 0xFF)
+  {
+    return FALSE;
+  }
+
+  if(UnionSet[ListData].ParAndIf[Level].ParentPort == 0xFF)
+  {
+    return TRUE;
+  }
+
+  //
+  //Match the device path
+  //
+  if ( UnionSet[Index].ParAndIf[Level].ParentPort == UnionSet[ListData].ParAndIf[Level].ParentPort &&
+                 UnionSet[Index].ParAndIf[Level].Interface == UnionSet[ListData].ParAndIf[Level].Interface )
+  {
+    return ( IsNext(UnionSet, Index, ListData, Level+1 )  );
+  } else if(UnionSet[Index].ParAndIf[Level].ParentPort > UnionSet[ListData].ParAndIf[Level].ParentPort )
+  {
+    return TRUE;
+  } else if(UnionSet[Index].ParAndIf[Level].ParentPort == UnionSet[ListData].ParAndIf[Level].ParentPort &&
+                UnionSet[Index].ParAndIf[Level].Interface >= UnionSet[ListData].ParAndIf[Level].Interface)
+  {
+    return TRUE;
+  }else {
+    return FALSE;
+  }
+
+}
+
+
+VOID
+SortIndex(UINT16 Index,INDEX_LIST *IndexList, USB_UNION_SET *UnionSet)
+{
+  UINT16        ListData;
+  INDEX_LIST    *tmpListPt;
+
+  ListData = IndexList->Index;
+
+  tmpListPt   = IndexList;
+  while(tmpListPt->Next != NULL)
+  {
+    ListData = tmpListPt->Index;
+    if( !IsNext(UnionSet, Index, ListData, 0) && Index!=ListData )
+    {
+      InsertForwardIndex(Index, tmpListPt);
+      break;
+    }
+    tmpListPt = tmpListPt->Next;
+  }
+
+  if(tmpListPt->Next == NULL)
+  {
+    InsertForwardIndex(Index, tmpListPt);
+  }
+
+}
+
 
 //
 //Device
@@ -362,45 +398,74 @@ EnumerUsbDevieInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEA
   EFI_STATUS                Status;
   UINT16                    Index;
   EFI_DEVICE_PATH_PROTOCOL  *DevicePath;
-
   USB_UNION_SET             *UnionSet;
+  INDEX_LIST                *IndexList;
+  INDEX_LIST                *ListHeader;
+  INDEX_LIST                *ListTail;
+  INDEX_LIST                *EmuList;
+
+  Status = EFI_SUCCESS;
+
   UnionSet = AllocateZeroPool(sizeof(USB_UNION_SET) * NumOfHandles );
 
   for( Index = 0; Index < NumOfHandles; Index++ )
   {
     DevicePath = DevicePathFromHandle( HandleBuffer[Index] );
     UnionSetParentPortAndInterface(DevicePath, (UnionSet + Index) );
-    (UnionSet + Index)->pIndex = Index;
   }
 
-  SetUnionSetpIndx(UnionSet, NumOfHandles, 1);
+  //
+  //Init List
+  //
+  ListHeader = AllocatePool( sizeof(INDEX_LIST) );
+  IndexList  = AllocatePool( sizeof(INDEX_LIST) );
+  ListTail   = AllocatePool( sizeof(INDEX_LIST) );
+  IndexList->Forward =  ListHeader;
+  IndexList->Next    =  ListTail;
+  IndexList->Index   =  0;
 
+  ListHeader->Next    = IndexList;
+  ListHeader->Forward = NULL;
+  ListHeader->Index   = NumOfHandles;
 
-  for( Index = 0; Index < NumOfHandles; Index++ )
+  ListTail->Next    = NULL;
+  ListTail->Index   = NumOfHandles;
+  ListTail->Forward = IndexList;
+  //
+  //Sort the handle to output.
+  //
+  for( Index = 1; Index < NumOfHandles; Index++)
   {
-    if( (UnionSet + Index)->pIndex == Index && (UnionSet + Index)->Level == 1)
-    {
-      //
-      //If select the handle index, only print the select one detail message. Otherwise, print all device's message.
-      //
-      if( !Select || ( Select && ConvertHandleToHandleIndex( HandleBuffer[Index] ) == mSelectPort ) )
-      {
-        PrintMessage(HandleBuffer[Index], AllDisplay, Select);
-
-        if(Select)
-        {
-          return Status;
-        }
-      }
-
-      //
-      //Find child device
-      //
-      FindChildDevice( HandleBuffer, UnionSet, Index, AllDisplay, Select, 1, NumOfHandles);
-    }
-
+    SortIndex(Index, IndexList, UnionSet);
   }
 
+  EmuList =  ListHeader->Next;
+  while( EmuList->Next != NULL)
+  {
+    //
+    //If select the handle index, only print the select one detail message. Otherwise, print all device's message.
+    //
+    if( !Select || ( Select && ConvertHandleToHandleIndex( HandleBuffer[EmuList->Index] ) == mSelectPort ) )
+    {
+      Index = (UnionSet + EmuList->Index)->Level;
+      while(Index--)
+      {
+        StrCatS(mFormat, 20, L"  ");
+      }
+      PrintMessage(HandleBuffer[EmuList->Index], AllDisplay, Select);
+      UnicodeSPrint(mFormat, 100, L"  ");
+      if(Select)
+      {
+        return Status;
+      }
+    }
+    EmuList = EmuList->Next;
+  }
+  Print(L"\n");
+  SHELL_FREE_NON_NULL(ListHeader);
+  SHELL_FREE_NON_NULL(ListTail);
+  SHELL_FREE_NON_NULL(IndexList);
+  SHELL_FREE_NON_NULL(UnionSet);
   return Status;
 }
 
@@ -472,8 +537,9 @@ EnumerUsbRootInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN
     {
       ShellPrintHiiEx(-1,-1,NULL,STRING_TOKEN(STR_ROOT_AND_PATH), mUsbViewHiiHandle,
                           ConvertHandleToHandleIndex(HandleBuffer[Index]),
-                          (DeviceName != NULL ? DeviceName : L"Unknown"),
-                          StringPath);
+                          StringPath,
+                          (DeviceName != NULL ? DeviceName : L"Unknown")
+                          );
       //
       //Print detail message
       //
@@ -497,9 +563,7 @@ EnumerUsbRootInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN
     {
 
     } else {
-      UnicodeSPrint( mFormat, 20, L"%s  ", mFormat );
       EnumerUsbDevieInfo( ChildControllerHandleBuffer,  ChildControllerHandleCount, AllDisplay, Select );
-      mFormat[ StrLen( mFormat ) - 2 ] = L'\0';
 
     }
 
@@ -611,7 +675,6 @@ RunUsbView(
   }
 
   // Print(L"Hc Handles:%d\n", NumOfUsbHcHandles);
-  mMaxLevel = 0;
   EnumerUsbRootInfo( UsbHcHandleBuffer, NumOfUsbHcHandles, AllDisplay, Select );
 
 Error:

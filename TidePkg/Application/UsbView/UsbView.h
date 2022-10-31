@@ -146,11 +146,15 @@ typedef struct
 typedef struct
 {
   USB_PARENT_AND_INTERFACE ParAndIf[8];
-  UINT8                    Level;
-  UINT16                   pIndex;
+  UINT16                   Level;
 }USB_UNION_SET;
 
-
+typedef struct INDEX_LIST_ST
+{
+  struct INDEX_LIST_ST  *Forward;
+  UINT16               Index;
+  struct INDEX_LIST_ST  *Next;
+}INDEX_LIST;
 
 USB_DEVICE *
 UsbFindChild (
