@@ -104,7 +104,6 @@ PrintDeviceDesc(IN CONST EFI_HANDLE Handle, BOOLEAN AllDisplay)
     return Status;
   }
 
-
   Status = UsbIo->UsbGetSupportedLanguages(UsbIo, &LangIdTable, &TableSize);
   Status = UsbIo->UsbGetDeviceDescriptor(UsbIo, &DeviceDesc);
 
@@ -203,7 +202,6 @@ PrintMessage(IN CONST EFI_HANDLE Handle, BOOLEAN AllDisplay, BOOLEAN Select)
   //
   //Show Usb Io Device Info.
   //
-
   PrintDeviceDesc( Handle , AllDisplay);
 
   SHELL_FREE_NON_NULL(StringPath);
@@ -211,7 +209,6 @@ PrintMessage(IN CONST EFI_HANDLE Handle, BOOLEAN AllDisplay, BOOLEAN Select)
 
   return;
 }
-
 
 
 EFI_STATUS
@@ -237,10 +234,13 @@ PrintRootHubDesc(IN CONST EFI_HANDLE Handle)
   return Status;
 }
 
+/**
+  Convert the EFI_DEVICE_PATH to USB_UNION_SET, to get the usb parent port and Interface number.
+**/
 VOID
 UnionSetParentPortAndInterface(
-   EFI_DEVICE_PATH_PROTOCOL* DevPath,
-   USB_UNION_SET            *UnionSet
+   IN EFI_DEVICE_PATH_PROTOCOL* DevPath,
+   OUT USB_UNION_SET            *UnionSet
    )
 {
   USB_DEVICE_PATH           *UsbDevicePath;
@@ -257,7 +257,6 @@ UnionSetParentPortAndInterface(
     return ;
   }
 
-
   while(!IsDevicePathEnd(pDevPath)){
     if(pDevPath->Type == MESSAGING_DEVICE_PATH && pDevPath->SubType == MSG_USB_DP){
       UsbDevicePath = (USB_DEVICE_PATH*)pDevPath;
@@ -271,10 +270,13 @@ UnionSetParentPortAndInterface(
   return ;
 }
 
+/**
+  Return the string about Device Path text.
+**/
 VOID
 GetUsbParentPortAndInterface(
-   EFI_DEVICE_PATH_PROTOCOL* DevPath,
-   CHAR16             *String
+   IN  EFI_DEVICE_PATH_PROTOCOL* DevPath,
+   OUT CHAR16                    *String
    )
 {
   USB_DEVICE_PATH           *UsbDevicePath;
@@ -295,6 +297,13 @@ GetUsbParentPortAndInterface(
   return ;
 }
 
+/**
+  Insert the Index after the current List node.
+
+  @param[in] Index          The index which need to be insert the list.
+  @param[in] ListData       The List node.
+
+**/
 VOID
 InsertNextIndex(UINT16 Index, INDEX_LIST *IndexList)
 {
@@ -321,12 +330,32 @@ InsertNextIndex(UINT16 Index, INDEX_LIST *IndexList)
   return ;
 }
 
+/**
+  Insert the Index prior to the current List node.
+
+  @param[in] Index          The index which need to be insert the list.
+  @param[in] ListData       The List node.
+
+**/
 VOID
 InsertForwardIndex(UINT16 Index, INDEX_LIST *IndexList)
 {
   InsertNextIndex(Index, IndexList->Forward);
 }
 
+/**
+  Decide to whether compare the next index or insert the index.
+
+  @param[in] UnionSet       A Set about the parent port and interface number.
+  @param[in] Index          The index which need to be insert the list.
+  @param[in] ListData       The index in the list to be compared.
+  @param[in] Level          The Usb topology's tier. Compare the Level zero firstly.
+                            If equal, the compare the next level.
+
+  @retval TRUE              Compare the next Index, or insert the Index at the end of list.
+  @retval FALSE             Insert the Index prior to the current ListData.
+
+**/
 BOOLEAN
 IsNext(USB_UNION_SET *UnionSet, UINT16 Index, UINT16 ListData, UINT16 Level)
 {
@@ -341,7 +370,7 @@ IsNext(USB_UNION_SET *UnionSet, UINT16 Index, UINT16 ListData, UINT16 Level)
   }
 
   //
-  //Match the device path
+  //Compare the device path
   //
   if ( UnionSet[Index].ParAndIf[Level].ParentPort == UnionSet[ListData].ParAndIf[Level].ParentPort &&
                  UnionSet[Index].ParAndIf[Level].Interface == UnionSet[ListData].ParAndIf[Level].Interface )
@@ -354,13 +383,20 @@ IsNext(USB_UNION_SET *UnionSet, UINT16 Index, UINT16 ListData, UINT16 Level)
                 UnionSet[Index].ParAndIf[Level].Interface >= UnionSet[ListData].ParAndIf[Level].Interface)
   {
     return TRUE;
-  }else {
+  } else {
     return FALSE;
   }
 
 }
 
+/**
+  Compare the UnionSet's parent port and interface number, to insert the index to the list.
 
+  @param[in] Index          The index of device's handle in the UsbIo handle buffer.
+  @param[in] IndexList      The list's first node.
+  @param[in] UnionSet       A Set about the parent port and interface number.
+
+**/
 VOID
 SortIndex(UINT16 Index,INDEX_LIST *IndexList, USB_UNION_SET *UnionSet)
 {
@@ -368,11 +404,15 @@ SortIndex(UINT16 Index,INDEX_LIST *IndexList, USB_UNION_SET *UnionSet)
   INDEX_LIST    *tmpListPt;
 
   ListData = IndexList->Index;
-
   tmpListPt   = IndexList;
+
   while(tmpListPt->Next != NULL)
   {
     ListData = tmpListPt->Index;
+
+    //
+    //Find the appropriate position in the list, then insert the Index.
+    //
     if( !IsNext(UnionSet, Index, ListData, 0) && Index!=ListData )
     {
       InsertForwardIndex(Index, tmpListPt);
@@ -381,17 +421,29 @@ SortIndex(UINT16 Index,INDEX_LIST *IndexList, USB_UNION_SET *UnionSet)
     tmpListPt = tmpListPt->Next;
   }
 
+  //
+  //Append the Index at the tail of the list
+  //
   if(tmpListPt->Next == NULL)
   {
     InsertForwardIndex(Index, tmpListPt);
   }
-
+  return ;
 }
 
 
-//
-//Device
-//
+/**
+  Enumerate the roothub‘s child devices by the USB2HC protocol, and show the device's information.
+
+  @param[in] HandleBuffer   A pointer to the Usb2HC's child handle buffer.
+  @param[in] NumofHandles   Number of the handles.
+  @param[in] AllDisplay     If TRUE, show the detail infomation about device. Otherwise，show the short information.
+  @param[in] Select         If TRUE, only show the specified device.
+
+  @retval EFI_SUCCESS       The function point is executed successfully.
+  @retval other             Some error occurs when executing this function.
+
+**/
 EFI_STATUS
 EnumerUsbDevieInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN AllDisplay, BOOLEAN Select )
 {
@@ -406,8 +458,10 @@ EnumerUsbDevieInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEA
 
   Status = EFI_SUCCESS;
 
+  //
+  //Convert the EFI_DEVICE_PATH to USB_UNION_SET, to get the usb parent port and Interface number.
+  //
   UnionSet = AllocateZeroPool(sizeof(USB_UNION_SET) * NumOfHandles );
-
   for( Index = 0; Index < NumOfHandles; Index++ )
   {
     DevicePath = DevicePathFromHandle( HandleBuffer[Index] );
@@ -415,7 +469,7 @@ EnumerUsbDevieInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEA
   }
 
   //
-  //Init List
+  //Init the list which contain the handle index.
   //
   ListHeader = AllocatePool( sizeof(INDEX_LIST) );
   IndexList  = AllocatePool( sizeof(INDEX_LIST) );
@@ -431,19 +485,23 @@ EnumerUsbDevieInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEA
   ListTail->Next    = NULL;
   ListTail->Index   = NumOfHandles;
   ListTail->Forward = IndexList;
+
   //
-  //Sort the handle to output.
+  //Insert sort the handle to decide the sequence of output the information.
   //
   for( Index = 1; Index < NumOfHandles; Index++)
   {
     SortIndex(Index, IndexList, UnionSet);
   }
 
+  //
+  //Enumate the list to output the information.
+  //
   EmuList =  ListHeader->Next;
   while( EmuList->Next != NULL)
   {
     //
-    //If select the handle index, only print the select one detail message. Otherwise, print all device's message.
+    //If select the spcecified index, only print the select one detail message. Otherwise, print all device's message.
     //
     if( !Select || ( Select && ConvertHandleToHandleIndex( HandleBuffer[EmuList->Index] ) == mSelectPort ) )
     {
@@ -452,8 +510,11 @@ EnumerUsbDevieInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEA
       {
         StrCatS(mFormat, 20, L"  ");
       }
+
       PrintMessage(HandleBuffer[EmuList->Index], AllDisplay, Select);
+
       UnicodeSPrint(mFormat, 100, L"  ");
+
       if(Select)
       {
         return Status;
@@ -470,9 +531,18 @@ EnumerUsbDevieInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEA
 }
 
 
-//
-//Roothub
-//
+/**
+  Enumerate all the Usb device by the USB2HC protocol, and show the device's information.
+
+  @param[in] HandleBuffer   A pointer to the Usb2HC's Handle buffer.
+  @param[in] NumofHandles   Number of the handles.
+  @param[in] AllDisplay     If TRUE, show the detail infomation about device. Otherwise，show the short information.
+  @param[in] Select         If TRUE, only show the specified device.
+
+  @retval EFI_SUCCESS       The function point is executed successfully.
+  @retval other             Some error occurs when executing this function.
+
+**/
 EFI_STATUS
 EnumerUsbRootInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN AllDisplay, BOOLEAN Select)
 {
@@ -483,23 +553,6 @@ EnumerUsbRootInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN
   CHAR16                    *DeviceName;
   EFI_HANDLE                *ChildControllerHandleBuffer;
   UINTN                     ChildControllerHandleCount;
-  // //for debug
-  // EFI_USB_IO_PROTOCOL        *UsbIo;
-  // UINTN                      NumOfUsbIoHandles;
-  // EFI_HANDLE                 *UsbIoHandleBuffer;
-  // Status = gBS->LocateHandleBuffer( ByProtocol,
-  //                                   &gEfiUsbIoProtocolGuid,
-  //                                   NULL,
-  //                                   &NumOfUsbIoHandles,
-  //                                   &UsbIoHandleBuffer);
-  // for( UINT16 UsbIoIndex = 0; UsbIoIndex < NumOfUsbIoHandles; UsbIoIndex++ )
-  // {
-  //   Status = gBS->HandleProtocol( UsbIoHandleBuffer[UsbIoIndex],
-  //                                 &gEfiUsbIoProtocolGuid,
-  //                                 (VOID**)&UsbIo);
-  //   Print(L"[%02x] ", ConvertHandleToHandleIndex( UsbIoHandleBuffer[UsbIoIndex] ) );
-  // }
-  // Print(L"\n");
 
   //
   //Enumerate all Roothub and Roothub's child device
@@ -554,8 +607,6 @@ EnumerUsbRootInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN
       }
     }
 
-
-
     //
     //Print child device message.
     //
@@ -564,7 +615,6 @@ EnumerUsbRootInfo(IN CONST EFI_HANDLE *HandleBuffer, UINTN NumOfHandles, BOOLEAN
 
     } else {
       EnumerUsbDevieInfo( ChildControllerHandleBuffer,  ChildControllerHandleCount, AllDisplay, Select );
-
     }
 
 
