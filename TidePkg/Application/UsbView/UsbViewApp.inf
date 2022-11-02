@@ -13,12 +13,6 @@
   UsbViewApp.c
   UsbView.c
   UsbView.h
-  UsbHub.h
-  UsbBus.h
-  UsbUtility.h
-  UsbDesc.h
-  UsbEnumer.h
-  Usbids.h
 [Packages]
   MdePkg/MdePkg.dec
   ShellPkg/ShellPkg.dec

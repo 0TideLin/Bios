@@ -10,6 +10,7 @@ EFI_HII_HANDLE                   *mUsbViewHiiHandle;
 STATIC CONST SHELL_PARAM_ITEM ParamList[] = {
   {L"-a",  TypeFlag},
   {L"-s",  TypeValue},
+  {L"-h",  TypeFlag},
   {NULL, TypeValue}
 };
 
@@ -689,6 +690,12 @@ RunUsbView(
     ShellPrintHiiEx( -1, -1, NULL, STRING_TOKEN(STR_GEN_TOO_MANY), mUsbViewHiiHandle, L"UsbView" );
     ShellCommandLineFreeVarList( CheckPackage );
     return (SHELL_INVALID_PARAMETER);
+  }
+
+  if( ShellCommandLineGetFlag( CheckPackage, L"-h") )
+  {
+    ShellPrintHiiEx( -1, -1, NULL, STRING_TOKEN(STR_GEN_HELP), mUsbViewHiiHandle, L"UsbView" );
+    return Status;
   }
 
   if( ShellCommandLineGetFlag( CheckPackage, L"-a") )

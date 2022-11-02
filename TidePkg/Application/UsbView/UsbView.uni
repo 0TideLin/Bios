@@ -16,3 +16,8 @@
 #string STR_CONFIG_DESC     #language en-US "%s%HConfigValue:%02x%N\r\n%sMaxPower:%dmA\r\n%sNumInterfaces:%d\r\n%sAttributes:%02x\r\n"
 #string STR_INTERFACE_DESC  #language en-US "%s%HInterface%d%N\r\n%sClass:%02x\r\n%sSubClass:%02x\r\n%sProtocol:%02x\r\n"
 #string STR_ENDPOINT_DESC   #language en-US "%s%HEndpoint%d%N\r\n%sAddress:%02x\r\n%sInterval:%02x\r\n%sMaxPacketSize:%02x\r\n%sAttributer:%02x\r\n"
+#string STR_GEN_HELP        #language en-US "%s:\r\n"
+"Show the usb device infomation.\r\n"
+"UsbView [-a] [-s Index]\r\n"
+"-a             -Show the device's detail information\r\n"
+"-s Index       -Selcet the Index of handle, and show the spceified one's information\r\n"
