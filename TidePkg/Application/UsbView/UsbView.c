@@ -733,11 +733,11 @@ RunUsbView(
 
   // Print(L"Hc Handles:%d\n", NumOfUsbHcHandles);
   EnumerUsbRootInfo( UsbHcHandleBuffer, NumOfUsbHcHandles, AllDisplay, Select );
-
+  Print(L"end App\n");
 Error:
-  SHELL_FREE_NON_NULL( UsbHcHandleBuffer );
-  SHELL_FREE_NON_NULL( mFormat );
-  SHELL_FREE_NON_NULL( mLanguage );
-  SHELL_FREE_NON_NULL( mDevice2TextProtocol );
+//   SHELL_FREE_NON_NULL( UsbHcHandleBuffer );
+//   SHELL_FREE_NON_NULL( mFormat );
+//   SHELL_FREE_NON_NULL( mLanguage );
+//   SHELL_FREE_NON_NULL( mDevice2TextProtocol );
   return Status;
 }

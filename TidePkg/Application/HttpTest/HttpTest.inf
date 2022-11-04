@@ -1,0 +1,39 @@
+[Defines]
+  INF_VERSION           = 0x00010005
+  BASE_NAME             = HttpTest
+  FILE_GUID             = 4a9ff7fc-2576-4090-bc5e-bb352c4394bb
+  MODULE_TYPE           = UEFI_APPLICATION
+  VERSION_STRING        = 1.0
+  ENTRY_POINT           = HttpRun
+
+[Sources]
+  HttpTest.c
+  HttpTest.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+  ShellPkg/ShellPkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+
+[LibraryClasses]
+  MemoryAllocationLib
+  BaseLib
+  UefiLib
+  UefiBootServicesTableLib
+  UefiApplicationEntryPoint
+  BaseMemoryLib
+  DebugLib
+  ReportStatusCodeLib
+  ShellLib
+  NetLib
+  HttpLib
+
+[Guids]
+  gEfiFileSystemVolumeLabelInfoIdGuid
+
+[Protocols]
+  gEfiSimpleFileSystemProtocolGuid
+  gEfiDevicePathToTextProtocolGuid
+  gEfiManagedNetworkProtocolGuid
+  gEfiManagedNetworkServiceBindingProtocolGuid
+
