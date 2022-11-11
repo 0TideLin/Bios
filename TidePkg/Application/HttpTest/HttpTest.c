@@ -5,6 +5,69 @@ STATIC BOOLEAN  gResponseCallbackComplete = FALSE;
 
 STATIC BOOLEAN  gHttpError;
 
+STATIC SHELL_FILE_HANDLE  mFileHandle = NULL;
+
+//
+// Path of the local file, Unicode encoded.
+//
+STATIC CONST CHAR16  *mLocalFilePath;
+
+STATIC EFI_HANDLE   mNetDownloadImageHanlde;
+STATIC CHAR8               *mAppBuffer;
+STATIC UINTN               mAppBufferSize;
+
+
+EFI_STATUS
+EFIAPI
+ImageLoadFile2 (
+  IN EFI_LOAD_FILE2_PROTOCOL   *This,
+  IN EFI_DEVICE_PATH_PROTOCOL  *FilePath,
+  IN BOOLEAN                   BootPolicy,
+  IN OUT UINTN                 *BufferSize,
+  IN VOID                      *Buffer OPTIONAL
+  )
+
+{
+  DEBUG((DEBUG_INFO, "My Image Load File\n" ));
+  // Verify if the valid parameters
+  if ((This == NULL) ||
+      (BufferSize == NULL) ||
+      (FilePath == NULL) ||
+      !IsDevicePathValid (FilePath, 0))
+  {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  if (BootPolicy) {
+    return EFI_UNSUPPORTED;
+  }
+
+  // Check if the given buffer size is big enough
+  // EFI_BUFFER_TOO_SMALL to allow caller to allocate a bigger buffer
+  if (mAppBufferSize == 0) {
+    return EFI_NOT_FOUND;
+  }
+
+  if ((Buffer == NULL) || (*BufferSize < mAppBufferSize)) {
+    *BufferSize = mAppBufferSize;
+    return EFI_BUFFER_TOO_SMALL;
+  }
+
+  // Copy InitRd
+  CopyMem (Buffer, mAppBuffer, mAppBufferSize);
+  *BufferSize = mAppBufferSize;
+
+  return EFI_SUCCESS;
+}
+
+///
+/// Load File Protocol instance
+///
+STATIC EFI_LOAD_FILE2_PROTOCOL  mImageLoadFile2 = {
+  ImageLoadFile2
+};
+
+
 /**
 
   Function opens and returns a file handle to the root directory of a volume.
@@ -449,16 +512,18 @@ SavePortion (
   UINTN       LastStep;
   UINTN       Step;
   EFI_STATUS  Status;
-
+  CHAR8       *BufferPt;
   LastStep = 0;
   Step     = 0;
 
-  Print(L"COntext LastReportedNbOfBytes:%d\n", Context->LastReportedNbOfBytes);
-  for(UINTN BufferIndex = 0; BufferIndex < DownloadLen; Buffer++)
-  {
-    Print(L"%02x ", Buffer[BufferIndex]);
-    if(BufferIndex % 10 == 9 )Print(L"\n");
-  }
+  // Print(L"COntext LastReportedNbOfBytes:%d\nDownloadlen:%d\n", Context->LastReportedNbOfBytes, DownloadLen);
+
+
+  ShellSetFilePosition (mFileHandle, Context->LastReportedNbOfBytes);
+  Status = ShellWriteFile (mFileHandle, &DownloadLen, Buffer);
+
+  BufferPt = mAppBuffer + Context->LastReportedNbOfBytes;
+  CopyMem(BufferPt, Buffer,  DownloadLen);
 
   if (EFI_ERROR (Status)) {
     if (Context->ContentDownloaded > 0) {
@@ -489,7 +554,7 @@ SavePortion (
       //
       // Update downloaded size, there is no length info available.
       //
-      PrintEx (L"%7d Kb", NbOfKb);
+      Print (L"%7d Kb", NbOfKb);
     }
 
     return EFI_SUCCESS;
@@ -861,6 +926,8 @@ GetResponse (
   UINTN                   ElapsedSeconds;
   BOOLEAN                 IsTrunked;
   BOOLEAN                 CanMeasureTime;
+  EFI_HANDLE              ImageHanlde;
+  EFI_DEVICE_PATH_PROTOCOL *DevicePath;
 
   ZeroMem (&ResponseData, sizeof (ResponseData));
   ZeroMem (&ResponseMessage, sizeof (ResponseMessage));
@@ -998,7 +1065,7 @@ GetResponse (
           //
           // This gives an RFC HTTP error.
           //
-          Context->Status = ShellStrToUintn (Desc);
+          Context->Status = StrDecimalToUintn(Desc);  //ShellStrToUintn (Desc);
           Status          = ENCODE_ERROR (Context->Status);
         }
       }
@@ -1032,6 +1099,33 @@ GetResponse (
     }
   }
 
+  //
+  //
+  //
+  Print(L"Dowanload finish\n");
+  DevicePath = DevicePathFromHandle(mNetDownloadImageHanlde);
+  Print(L"DevicePath:%02x, %02x\n", DevicePath->Type, DevicePath->SubType);
+
+  // Status = gBS->LocateDevicePath(&gEfiLoadFile2ProtocolGuid, &DevicePath, ImageHanlde);
+  // Print(L"File2:%r\n", Status);
+
+  Status = gBS->LoadImage(FALSE, gImageHandle,DevicePath,
+                                              NULL,
+                                              mAppBufferSize,
+                                              &ImageHanlde);
+  Print(L"LoadImage:%r\n", Status);
+
+  if(EFI_ERROR(Status)) {
+    goto Error;
+  }
+
+  gBS->SetWatchdogTimer( 5 * 60, 0x0000, 0x00, NULL);
+
+  Status = gBS->StartImage(ImageHanlde, NULL, NULL);
+
+  gBS->SetWatchdogTimer(0x0000, 0x0000, 0x0000, NULL);
+
+Error:
   SHELL_FREE_NON_NULL (MsgParser);
   if (Context->ResponseToken.Event) {
     gBS->CloseEvent (Context->ResponseToken.Event);
@@ -1084,6 +1178,25 @@ DownloadFile (
     goto ON_EXIT;
   }
 
+  //
+  // Open the file.
+  //
+  if (!EFI_ERROR (ShellFileExists (mLocalFilePath))) {
+    ShellDeleteFileByName (mLocalFilePath);
+  }
+
+  Status = ShellOpenFileByName (
+             mLocalFilePath,
+             &mFileHandle,
+             EFI_FILE_MODE_CREATE |
+             EFI_FILE_MODE_WRITE  |
+             EFI_FILE_MODE_READ,
+             0
+             );
+  if (EFI_ERROR (Status)) {
+    Print(L"Can't open file\n");
+    goto ON_EXIT;
+  }
 
   do {
 
@@ -1154,6 +1267,13 @@ ON_EXIT:
   //
   // Close the file.
   //
+  if (mFileHandle != NULL) {
+    if (EFI_ERROR (Status) ) {
+      ShellDeleteFile (&mFileHandle);
+    } else {
+      ShellCloseFile (&mFileHandle);
+    }
+  }
   SHELL_FREE_NON_NULL (DownloadUrl);
   SHELL_FREE_NON_NULL (Context->Buffer);
 
@@ -1178,6 +1298,7 @@ HttpRun(
   CHAR16                   NicName[IP4_CONFIG2_INTERFACE_INFO_NAME_LENGTH];
   EFI_HANDLE               *Handles;
   EFI_HANDLE               ControllerHandle;
+  EFI_LOAD_FILE2_PROTOCOL  *File2Protcol;
 
   ZeroMem (&Context, sizeof(Context));
 
@@ -1185,13 +1306,36 @@ HttpRun(
   ZeroMem (&Context.HttpConfigData, sizeof (Context.HttpConfigData));
   ZeroMem (&IPv4Node, sizeof (IPv4Node));
 
+  mAppBuffer = AllocateZeroPool( SIZE_16MB);
+  mAppBufferSize = 0;
+  mNetDownloadImageHanlde = NULL;
+
+
+  Print(L"Start\n");
+ Status = gBS->InstallMultipleProtocolInterfaces(
+                          &mNetDownloadImageHanlde,
+                          &gEfiLoadFile2ProtocolGuid,
+                          &mImageLoadFile2,
+                          &gEfiDevicePathProtocolGuid,
+                          &NetDownloadImageDevicePath,
+                          NULL
+                          );
+  // mNetDownloadImage.LoadFile2.LoadFile()
+  Print(L"Install Status:%r\n", Status);
+
+
+  Status = gBS->HandleProtocol(mNetDownloadImageHanlde, &gEfiLoadFile2ProtocolGuid, (void**)&File2Protcol);
+  Status = File2Protcol->LoadFile(File2Protcol, NULL, FALSE, (UINTN)0, NULL );
+  Print(L"File2:%r\n", Status);
   IPv4Node.UseDefaultAddress = TRUE;
   Context.HttpConfigData.HttpVersion          = HttpVersion11;
   Context.HttpConfigData.AccessPoint.IPv4Node = &IPv4Node;
 
-  Context.ServerAddrAndProto    = L"http://192.168.1.100";
+  Context.ServerAddrAndProto    = L"http://192.168.1.102";
   Context.BufferSize            = DEFAULT_BUF_SIZE;
-  Context.Uri                   = L"file/2008";
+  Context.Uri                   = L"file/321FBE27.efi";
+
+  mLocalFilePath = L"httpget.efi";
 
   Status = gBS->LocateHandleBuffer (
                   ByProtocol,
@@ -1213,11 +1357,11 @@ HttpRun(
       }
 
       Status = DownloadFile (&Context, ControllerHandle, NicName);
+      Print(L"DownloadFile:%r\n", Status);
 
     }
   }
-
-
+  return Status;
 
 }
 

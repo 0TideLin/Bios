@@ -11,6 +11,10 @@
 #include <Library/HttpLib.h>
 #include <Library/NetLib.h>
 #include <Library/DebugLib.h>
+#include <Library/TimeBaseLib.h>
+#include <Library/UefiRuntimeServicesTableLib.h>
+#include <Library/ShellLib.h>
+#include <Library/PrintLib.h>
 
 #include <Guid/FileSystemVolumeLabelInfo.h>
 #include <Guid/FileInfo.h>
@@ -19,6 +23,8 @@
 #include <Protocol/Http.h>
 #include <Protocol/ServiceBinding.h>
 #include <Protocol/HttpUtilities.h>
+#include <Protocol/Shell.h>
+#include <Protocol/LoadFile2.h>
 
 #define DEFAULT_BUF_SIZE  SIZE_32KB
 #define MAX_BUF_SIZE      SIZE_4MB
@@ -137,5 +143,57 @@ typedef struct {
   EFI_HTTP_PROTOCOL       *Http;
   EFI_HTTP_CONFIG_DATA    HttpConfigData;
 } HTTP_DOWNLOAD_CONTEXT;
+
+
+typedef struct {
+  EFI_DEVICE_PATH_PROTOCOL   Header;
+  EFI_GUID                   Guid;
+}NET_DOWNLOAD_DEVICE_PATH;
+
+
+typedef struct {
+  NET_DOWNLOAD_DEVICE_PATH  NetDownLoadDevicePath;
+  VENDOR_DEFINED_DEVICE_PATH VendorDefindDevicePath;
+  EFI_DEVICE_PATH_PROTOCOL  End;
+} NET_DOWNLOAD_IMAGE_DEVICE_PATH;
+
+
+NET_DOWNLOAD_IMAGE_DEVICE_PATH  NetDownloadImageDevicePath = {
+  {
+    {
+      0x01,
+      0x04,
+      {
+        (UINT8) (sizeof (NET_DOWNLOAD_DEVICE_PATH) ),
+        (UINT8) ((sizeof(NET_DOWNLOAD_DEVICE_PATH)) >> 8 )
+      }
+    },
+    //
+    //2fd72997-59ec-4c23-b713-90c079cf77aa
+    //
+    { 0x2fd72997, 0x59ec, 0x4c23, { 0xb7, 0x13, 0x90, 0xc0, 0x79, 0xcf, 0x77, 0xaa} }
+  },
+  {
+    {
+      MEDIA_DEVICE_PATH,
+      MEDIA_VENDOR_DP,
+      { sizeof (VENDOR_DEVICE_PATH),       0 }
+    },
+    //
+    //be7503d7-8e88-4c12-a999-4f50c34313cf
+    //
+    { 0xbe7503d7, 0x8e88, 0x4c12, { 0xa9, 0x99, 0x4f, 0x50, 0xc3, 0x43, 0x13, 0xcf} }
+  },
+  {
+    END_DEVICE_PATH_TYPE,
+    END_ENTIRE_DEVICE_PATH_SUBTYPE,
+    {
+      (UINT8) (END_DEVICE_PATH_LENGTH),
+      (UINT8) ((END_DEVICE_PATH_LENGTH) >> 8 )
+    }
+  }
+
+};
+
 
 #endif

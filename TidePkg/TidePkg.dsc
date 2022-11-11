@@ -66,6 +66,9 @@
 	IoLib|MdePkg/Library/BaseIoLibIntrinsic/BaseIoLibIntrinsic.inf
 	RegisterFilterLib|MdePkg/Library/RegisterFilterLibNull/RegisterFilterLibNull.inf
 	HandleParsingLib|ShellPkg/Library/UefiHandleParsingLib/UefiHandleParsingLib.inf
+	TimeBaseLib|EmbeddedPkg/Library/TimeBaseLib/TimeBaseLib.inf
+	NetLib|NetworkPkg/Library/DxeNetLib/DxeNetLib.inf
+	HttpLib|NetworkPkg/Library/DxeHttpLib/DxeHttpLib.inf
 
 ########################################################################################
 #Components
