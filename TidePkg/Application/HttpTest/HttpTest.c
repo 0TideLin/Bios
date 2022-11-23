@@ -1300,9 +1300,127 @@ HttpRun(
   EFI_HANDLE               ControllerHandle;
   EFI_LOAD_FILE2_PROTOCOL  *File2Protcol;
 
+  UINT8                    *Buffer;
+  UINTN                    BufferSize;
+  UINT32                   AuthenticationStatus;
+  EFI_DEVICE_PATH_PROTOCOL *DevicePath;
+  EFI_HANDLE               Handle;
+
+
+  EFI_FIRMWARE_VOLUME2_PROTOCOL *Fv;
+  EFI_GUID           NameGuid = { 0xB95E9FDA, 0x26DE, 0x48D2,{0x88, 0x07, 0x1F, 0x91, 0x07, 0xAC, 0x5E, 0x3A} };
+  EFI_LOADED_IMAGE_PROTOCOL  *LoadedImage;
+  // LOADED_IMAGE_PRIVATE_DATA  *Image;
+
+
+  Status = gBS->HandleProtocol (
+                  gImageHandle,
+                  &gEfiLoadedImageProtocolGuid,
+                  (VOID **)&LoadedImage
+                  );
+  Print(L"LoadedImage:%r\n", Status);
+  Status = gBS->HandleProtocol (
+                  LoadedImage->DeviceHandle,
+                  &gEfiFirmwareVolume2ProtocolGuid,
+                  (VOID **)&Fv
+                  );
+  if (!EFI_ERROR (Status)) {
+    Print(L"Fv:%r\n", Status);
+    //
+    // Read desired section content in NameGuid file
+    //
+    Buffer = NULL;
+    BufferSize = 0;
+    Status  = Fv->ReadSection (
+                    Fv,
+                    &NameGuid,
+                    EFI_SECTION_PE32,
+                    0,
+                    (VOID**)&Buffer,
+                    &BufferSize,
+                    &AuthenticationStatus
+                    );
+    Print(L"ReadSection:%r\n", Status);
+    if(!EFI_ERROR (Status)){
+      Status = gBS->StartImage(LoadedImage->DeviceHandle, NULL, NULL);
+      Print(L"StartImage:%r\n", Status);
+    }
+  } else {
+    Print(L"Fv:%r\n", Status);
+  }
+
+  Status = gBS->LocateHandleBuffer (
+                        ByProtocol,
+                        &gEfiFirmwareVolume2ProtocolGuid,
+                        NULL,
+                        &HandleCount,
+                        &Handles
+                        );
+  Print(L"HandleCount:%d\n", HandleCount);
+  for (UINTN Index = 0; Index < HandleCount; Index++) {
+    //
+    // Skip the FV that contain the caller's FFS
+    //
+    if (Handles[Index] != LoadedImage->DeviceHandle) {
+        Status = gBS->HandleProtocol (
+                    Handles[Index],
+                    &gEfiFirmwareVolume2ProtocolGuid,
+                    (VOID **)&Fv
+                    );
+        if (EFI_ERROR (Status)) {
+          Print(L"Fv:%r\n", Status);
+          continue;
+        }
+
+        Print(L"Fv:%r\n", Status);
+        //
+        // Read desired section content in NameGuid file
+        //
+
+        Buffer       = NULL;
+        BufferSize   = 0;
+        Status  = Fv->ReadSection (
+                        Fv,
+                        &NameGuid,
+                        EFI_SECTION_PE32,
+                        0,
+                        (VOID**)&Buffer,
+                        &BufferSize,
+                        &AuthenticationStatus
+                        );
+
+        if (!EFI_ERROR (Status)) {
+          Print(L"BufferSize:%d\n", BufferSize);
+          DevicePath =  DevicePathFromHandle(Handles[Index]);
+          Status = gBS->LoadImage(FALSE, gImageHandle, DevicePath, Buffer, BufferSize, &Handle);
+          Print(L"LoadImage:%r\n", Status);
+          Status = gBS->StartImage(Handle, NULL, NULL);
+          Print(L"StartImage:%r\n", Status);
+          continue;
+          }
+
+
+      }
+  }
+
+  // for(UINT16 Index = EFI_SECTION_PE32; Index <= EFI_SECTION_RAW; Index++)
+  // {
+  //   Status = GetSectionFromAnyFv(&NameGuid, Index, 0, (VOID**)&Buffer, &BufferSize);
+  //   Print(L"%r\n", Status);
+  //   if(!EFI_ERROR (Status))
+  //   {
+  //     Print(L"BufferSize:%d\n", BufferSize);
+  //     Status = gBS->LoadImage(FALSE, gImageHandle, NULL, Buffer, BufferSize, Handles);
+  //   }
+  //   if(Buffer != NULL){
+  //     FreePool(Buffer);
+  //   }
+  // }
+
+  return 0;
+
+
   ZeroMem (&Context, sizeof(Context));
-
-
   ZeroMem (&Context.HttpConfigData, sizeof (Context.HttpConfigData));
   ZeroMem (&IPv4Node, sizeof (IPv4Node));
 

@@ -88,6 +88,7 @@
 	TidePkg/Application/UsbView/UsbViewApp.inf
 	TidePkg/Application/PciRead/PciRead.inf
 	TidePkg/Application/HttpTest/HttpTest.inf
+	TidePkg/Override/HttpDynamicCommand/HttpApp.inf
 
 [BuildOptions.Common]
 

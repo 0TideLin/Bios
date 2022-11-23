@@ -31,6 +31,7 @@
   NetLib
   HttpLib
   TimeBaseLib
+  DxeServicesLib
 
 [Guids]
   gEfiFileSystemVolumeLabelInfoIdGuid
