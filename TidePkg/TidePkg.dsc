@@ -89,6 +89,7 @@
 	TidePkg/Application/PciRead/PciRead.inf
 	TidePkg/Application/HttpTest/HttpTest.inf
 	TidePkg/Override/HttpDynamicCommand/HttpApp.inf
+	TidePkg/Application/ReadFileAndSave/ReadFileAndSave.inf
 
 [BuildOptions.Common]
 

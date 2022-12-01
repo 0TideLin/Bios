@@ -19,9 +19,12 @@
 #include <Pi/PiFirmwareVolume.h>
 #include <Library/DxeServicesLib.h>
 #include <Library/PeCoffLib.h>
+#include <Library/FileExplorerLib.h>
 
 #include <Guid/FileSystemVolumeLabelInfo.h>
 #include <Guid/FileInfo.h>
+#include <Include/Guid/ImageAuthentication.h>
+#include <Guid/TlsAuthentication.h>
 
 #include <Protocol/DevicePathToText.h>
 #include <Protocol/Http.h>
@@ -32,6 +35,7 @@
 #include <Protocol/FirmwareVolume2.h>
 #include <Protocol/PeCoffImageEmulator.h>
 #include <Protocol/Runtime.h>
+
 
 #define LOADED_IMAGE_PRIVATE_DATA_SIGNATURE   SIGNATURE_32('l','d','r','i')
 

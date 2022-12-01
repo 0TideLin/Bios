@@ -1,0 +1,34 @@
+[Defines]
+  INF_VERSION           = 0x00010005
+  BASE_NAME             = ReadFileAndSave
+  FILE_GUID             = 60b3520e-abf0-408c-a7b7-d12d7c896828
+  MODULE_TYPE           = UEFI_APPLICATION
+  VERSION_STRING        = 1.0
+  ENTRY_POINT           = ReadFileAndSaveMain
+
+[Sources]
+  ReadFileAndSave.c
+  ReadFileAndSave.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+  ShellPkg/ShellPkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+
+
+[LibraryClasses]
+  MemoryAllocationLib
+  BaseLib
+  UefiLib
+  UefiBootServicesTableLib
+  UefiApplicationEntryPoint
+  BaseMemoryLib
+  DebugLib
+  ReportStatusCodeLib
+  ShellLib
+  DxeServicesLib
+	FileExplorerLib
+
+[Protocols]
+  gEfiSimpleFileSystemProtocolGuid
+

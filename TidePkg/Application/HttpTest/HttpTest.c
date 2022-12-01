@@ -17,6 +17,61 @@ STATIC CHAR8               *mAppBuffer;
 STATIC UINTN               mAppBufferSize;
 
 
+/**
+  Read file content into BufferPtr, the size of the allocate buffer
+  is *FileSize plus AddtionAllocateSize.
+
+  @param[in]       FileHandle            The file to be read.
+  @param[in, out]  BufferPtr             Pointers to the pointer of allocated buffer.
+  @param[out]      FileSize              Size of input file
+  @param[in]       AddtionAllocateSize   Addtion size the buffer need to be allocated.
+                                         In case the buffer need to contain others besides the file content.
+
+  @retval   EFI_SUCCESS                  The file was read into the buffer.
+  @retval   EFI_INVALID_PARAMETER        A parameter was invalid.
+  @retval   EFI_OUT_OF_RESOURCES         A memory allocation failed.
+  @retval   others                       Unexpected error.
+
+**/
+EFI_STATUS
+ReadFileContent (
+  IN      SHELL_FILE_HANDLE  FileHandle,
+  IN OUT  VOID             **BufferPtr,
+  OUT  UINTN               *FileSize,
+  IN      UINTN            AddtionAllocateSize
+  )
+
+{
+  UINTN       BufferSize;
+  VOID        *Buffer;
+  EFI_STATUS  Status;
+
+  if ((FileHandle == NULL) || (FileSize == NULL)) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Buffer = NULL;
+
+  //
+  // Get the file size
+  //
+  BufferSize = 2000;
+  Buffer     = AllocateZeroPool (BufferSize);
+  Status     = ShellReadFile(FileHandle, &BufferSize, &Buffer);
+  if (Status == EFI_BUFFER_TOO_SMALL) {
+    FreePool(Buffer);
+    Buffer = AllocateZeroPool(BufferSize);
+    Status     = ShellReadFile(FileHandle, &BufferSize, &Buffer);
+  }
+  if(EFI_ERROR(Status)){
+    return Status;
+  }
+
+  *BufferPtr = Buffer;
+  return Status;
+}
+
+
 EFI_STATUS
 EFIAPI
 ImageLoadFile2 (
@@ -67,132 +122,6 @@ STATIC EFI_LOAD_FILE2_PROTOCOL  mImageLoadFile2 = {
   ImageLoadFile2
 };
 
-
-/**
-
-  Function opens and returns a file handle to the root directory of a volume.
-
-  @param DeviceHandle    A handle for a device
-
-  @return A valid file handle or NULL is returned
-
-**/
-EFI_FILE_HANDLE
-LibOpenRoot (
-  IN EFI_HANDLE                   DeviceHandle
-  )
-{
-  EFI_STATUS                      Status;
-  EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *Volume;
-  EFI_FILE_HANDLE                 File;
-
-  File = NULL;
-
-  //
-  // File the file system interface to the device
-  //
-  Status = gBS->HandleProtocol (
-                  DeviceHandle,
-                  &gEfiSimpleFileSystemProtocolGuid,
-                  (VOID *) &Volume
-                  );
-
-  //
-  // Open the root directory of the volume
-  //
-  if (!EFI_ERROR (Status)) {
-    Status = Volume->OpenVolume (
-                      Volume,
-                      &File
-                      );
-  }
-  //
-  // Done
-  //
-  return EFI_ERROR (Status) ? NULL : File;
-}
-
-/**
-  This function converts an input device structure to a Unicode string.
-
-  @param DevPath                  A pointer to the device path structure.
-
-  @return A new allocated Unicode string that represents the device path.
-
-**/
-CHAR16 *
-LibDevicePathToStr (
-  IN EFI_DEVICE_PATH_PROTOCOL     *DevPath
-  )
-{
-  EFI_STATUS                       Status;
-  CHAR16                           *ToText;
-  EFI_DEVICE_PATH_TO_TEXT_PROTOCOL *DevPathToText;
-
-  if (DevPath == NULL) {
-    return NULL;
-  }
-
-  Status = gBS->LocateProtocol (
-                  &gEfiDevicePathToTextProtocolGuid,
-                  NULL,
-                  (VOID **) &DevPathToText
-                  );
-
-  ToText = DevPathToText->ConvertDevicePathToText (
-                            DevPath,
-                            FALSE,
-                            TRUE
-                            );
-
-
-  return ToText;
-}
-
-/**
-
-  Function gets the file information from an open file descriptor, and stores it
-  in a buffer allocated from pool.
-
-  @param FHand           File Handle.
-  @param InfoType        Info type need to get.
-
-  @retval                A pointer to a buffer with file information or NULL is returned
-
-**/
-VOID *
-LibFileInfo (
-  IN EFI_FILE_HANDLE      FHand,
-  IN EFI_GUID             *InfoType
-  )
-{
-  EFI_STATUS    Status;
-  EFI_FILE_INFO *Buffer;
-  UINTN         BufferSize;
-
-  Buffer      = NULL;
-  BufferSize  = 0;
-
-  Status = FHand->GetInfo (
-                    FHand,
-                    InfoType,
-                    &BufferSize,
-                    Buffer
-                    );
-  if (Status == EFI_BUFFER_TOO_SMALL) {
-    Buffer = AllocatePool (BufferSize);
-
-  }
-
-  Status = FHand->GetInfo (
-                    FHand,
-                    InfoType,
-                    &BufferSize,
-                    Buffer
-                    );
-
-  return Buffer;
-}
 
 /**
   Replace the original Host and Uri with Host and Uri returned by the
@@ -1310,8 +1239,69 @@ HttpRun(
   EFI_FIRMWARE_VOLUME2_PROTOCOL *Fv;
   EFI_GUID           NameGuid = { 0xB95E9FDA, 0x26DE, 0x48D2,{0x88, 0x07, 0x1F, 0x91, 0x07, 0xAC, 0x5E, 0x3A} };
   EFI_LOADED_IMAGE_PROTOCOL  *LoadedImage;
-  // LOADED_IMAGE_PRIVATE_DATA  *Image;
 
+
+
+  SHELL_FILE_HANDLE           FileHandle;
+  UINTN               X509DataSize;
+  VOID                *X509Data;
+  VOID                *Data;
+  VOID                *Temp;
+  UINTN               SigDataSize;
+  EFI_SIGNATURE_LIST  *CACert;
+  EFI_SIGNATURE_DATA  *CACertData;
+  UINTN               DataSize;
+  EFI_GUID            CACertGuid = {0x3ca782d2, 0x61be, 0x4de0,{0xac, 0x55, 0x57, 0x2d, 0x4e, 0x9b, 0xbb, 0xd5 }};
+
+  ShellOpenFileByName(L"apache-certificate", &FileHandle, EFI_FILE_MODE_READ, 0);
+
+  Status = ReadFileContent (
+             FileHandle,
+             &X509Data,
+             &X509DataSize,
+             0
+             );
+  Print(L"ReadFileContent:%r\n", Status);
+  if(EFI_ERROR(Status)){
+    return Status;
+  }
+  SigDataSize = sizeof (EFI_SIGNATURE_LIST) + sizeof (EFI_SIGNATURE_DATA) - 1 + X509DataSize;
+  Data = AllocateZeroPool (SigDataSize);
+  Temp = AllocateZeroPool ( (UINTN)2 );
+
+  //
+  // Fill Certificate Database parameters.
+  //
+  CACert                      = (EFI_SIGNATURE_LIST *)Data;
+  CACert->SignatureListSize   = (UINT32)SigDataSize;
+  CACert->SignatureHeaderSize = 0;
+  CACert->SignatureSize       = (UINT32)(sizeof (EFI_SIGNATURE_DATA) - 1 + X509DataSize);
+  CopyGuid (&CACert->SignatureType, &gEfiCertX509Guid);
+
+  CACertData = (EFI_SIGNATURE_DATA *)((UINT8 *)CACert + sizeof (EFI_SIGNATURE_LIST));
+  CopyGuid (&CACertData->SignatureOwner, &CACertGuid);
+  CopyMem ((UINT8 *)(CACertData->SignatureData), X509Data, X509DataSize);
+
+  Status = gRT->GetVariable (
+                  EFI_TLS_CA_CERTIFICATE_VARIABLE,
+                  &gEfiTlsCaCertificateGuid,
+                  NULL,
+                  &DataSize,
+                  Temp
+                  );
+  Print(L"GetVariable:%r\n", Status);
+  if(EFI_ERROR(Status)){
+    return Status;
+  }
+  Status = gRT->SetVariable (
+                  EFI_TLS_CA_CERTIFICATE_VARIABLE,
+                  &gEfiTlsCaCertificateGuid,
+                  EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS,
+                  SigDataSize,
+                  Data
+                  );
+  Print(L"Status:%r\n", Status);
+  return Status;
 
   Status = gBS->HandleProtocol (
                   gImageHandle,
@@ -1403,20 +1393,6 @@ HttpRun(
       }
   }
 
-  // for(UINT16 Index = EFI_SECTION_PE32; Index <= EFI_SECTION_RAW; Index++)
-  // {
-  //   Status = GetSectionFromAnyFv(&NameGuid, Index, 0, (VOID**)&Buffer, &BufferSize);
-  //   Print(L"%r\n", Status);
-  //   if(!EFI_ERROR (Status))
-  //   {
-  //     Print(L"BufferSize:%d\n", BufferSize);
-  //     Status = gBS->LoadImage(FALSE, gImageHandle, NULL, Buffer, BufferSize, Handles);
-  //   }
-  //   if(Buffer != NULL){
-  //     FreePool(Buffer);
-  //   }
-  // }
-
   return 0;
 
 
@@ -1438,7 +1414,6 @@ HttpRun(
                           &NetDownloadImageDevicePath,
                           NULL
                           );
-  // mNetDownloadImage.LoadFile2.LoadFile()
   Print(L"Install Status:%r\n", Status);
 
 
@@ -1483,68 +1458,3 @@ HttpRun(
 
 }
 
-
-  // EFI_STATUS                   Status;
-  // UINTN                        NoSimpleFsHandles;
-  // EFI_HANDLE                   *SimpleFsHandle;
-  // UINT16                       *VolumeLabel;
-  // UINT16                       *HelpString;
-  // UINTN                        Index;
-  // EFI_FILE_HANDLE              FileHandle;
-  // UINTN                        OptionNumber;
-  // EFI_FILE_SYSTEM_VOLUME_LABEL *Info;
-  // EFI_FILE_PROTOCOL            *NewFile;
-  // UINTN                        BufferSize;
-
-  // NoSimpleFsHandles = 0;
-  // OptionNumber      = 0;
-
-  // //
-  // // Locate Handles that support Simple File System protocol
-  // //
-  // Status = gBS->LocateHandleBuffer (
-  //                 ByProtocol,
-  //                 &gEfiSimpleFileSystemProtocolGuid,
-  //                 NULL,
-  //                 &NoSimpleFsHandles,
-  //                 &SimpleFsHandle
-  //                 );
-  // if (!EFI_ERROR (Status)) {
-  //   //
-  //   // Find all the instances of the File System prototocol
-  //   //
-  //   for (Index = 0; Index < NoSimpleFsHandles; Index++) {
-  //     // DeviceHandle = SimpleFsHandle[Index];
-  //     FileHandle = LibOpenRoot (SimpleFsHandle[Index]);
-  //     HelpString = LibDevicePathToStr (DevicePathFromHandle (SimpleFsHandle[Index]));
-
-  //     //
-  //     // Get current file system's Volume Label
-  //     //
-  //     Info = (EFI_FILE_SYSTEM_VOLUME_LABEL *) LibFileInfo (FileHandle, &gEfiFileSystemVolumeLabelInfoIdGuid);
-  //     if (Info == NULL) {
-  //       VolumeLabel = L"NO FILE SYSTEM INFO";
-  //     } else {
-  //       VolumeLabel = Info->VolumeLabel;
-  //       if (*VolumeLabel == 0x0000) {
-  //         VolumeLabel = L"NO VOLUME LABEL";
-  //       }
-  //     }
-  //     Print(L"%s:%s\n", VolumeLabel, HelpString);
-  //     if (Info != NULL)FreePool (Info);
-  //     Status = FileHandle->Open(FileHandle, &NewFile, L"Tide.txt",
-  //               EFI_FILE_MODE_CREATE|EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE, 0);
-  //     if(!EFI_ERROR ((Status))){
-  //       BufferSize = StrLen(HelpString);
-  //       Status = NewFile->Write(NewFile, &BufferSize, (VOID*)HelpString );
-  //       Print(L"NewFile:%r\n", Status);
-  //     }
-
-  //   }
-  // }
-
-  // if (NoSimpleFsHandles != 0) {
-  //   FreePool (SimpleFsHandle);
-  // }
-
-  // return Status;

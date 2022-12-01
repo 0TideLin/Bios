@@ -32,6 +32,8 @@
 #include <Protocol/HttpUtilities.h>
 #include <Protocol/ServiceBinding.h>
 
+#include <Guid/TlsAuthentication.h>
+
 #define HTTP_APP_NAME  L"http"
 
 #define REQ_OK           0

@@ -32,9 +32,12 @@
   HttpLib
   TimeBaseLib
   DxeServicesLib
+	FileExplorerLib
 
 [Guids]
   gEfiFileSystemVolumeLabelInfoIdGuid
+  gEfiTlsCaCertificateGuid
+  gEfiCertX509Guid
 
 [Protocols]
   gEfiSimpleFileSystemProtocolGuid

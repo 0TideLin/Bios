@@ -1,3 +1,4 @@
+## Https Server Config
 Install the Apache server and the required packages.
 
 ```
@@ -120,3 +121,18 @@ In our example, the following URL was entered in the Browser:
 • https://200.200.200.200
 
 The Apache server will display the HTTPS version of your website.
+
+## Domain Name Config
+
+Edit the Apache configuration file for the default website. Add the ServerName into the line, for example:
+
+```
+<VirtualHost *:80>
+        RewriteEngine On
+        RewriteCond %{HTTPS} !=on
+        RewriteRule ^/?(.*) https://%{SERVER_NAME}/$1 [R=301,L]
+        ServerName www.test.com
+</virtualhost>
+```
+The we can access the web by www.test.com
+这个方法只能在本机使用，无法在局域网内使用。在局域网内使用看dnsmasq.md。
