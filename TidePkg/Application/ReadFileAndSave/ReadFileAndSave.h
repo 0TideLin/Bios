@@ -6,8 +6,10 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
 #include <Library/FileExplorerLib.h>
+#include <Library/BaseMemoryLib.h>
+#include <Library/MemoryAllocationLib.h>
 
-VOID *Cert = "-----BEGIN CERTIFICATE-----\
+CHAR8 Cert[] = "-----BEGIN CERTIFICATE-----\
 MIIFlTCCA32gAwIBAgIUNdvpILR7Ut+ox+89u343is1BMr8wDQYJKoZIhvcNAQEL\
 BQAwWjELMAkGA1UEBhMCQ0gxCzAJBgNVBAgMAkdEMQswCQYDVQQHDAJTWjELMAkG\
 A1UECgwCR1cxDTALBgNVBAsMBEJpb3MxFTATBgNVBAMMDHd3dy50ZXN0LmNvbTAe\
