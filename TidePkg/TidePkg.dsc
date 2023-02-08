@@ -69,6 +69,10 @@
 	TimeBaseLib|EmbeddedPkg/Library/TimeBaseLib/TimeBaseLib.inf
 	NetLib|NetworkPkg/Library/DxeNetLib/DxeNetLib.inf
 	HttpLib|NetworkPkg/Library/DxeHttpLib/DxeHttpLib.inf
+	BaseCryptLib|CryptoPkg/Library/BaseCryptLib/BaseCryptLib.inf
+	OpensslLib|CryptoPkg/Library/OpensslLib/OpensslLib.inf
+	IntrinsicLib|CryptoPkg/Library/IntrinsicLib/IntrinsicLib.inf
+	RngLib|MdePkg/Library/BaseRngLibNull/BaseRngLibNull.inf
 
 ########################################################################################
 #Components
@@ -90,6 +94,7 @@
 	TidePkg/Application/HttpTest/HttpTest.inf
 	TidePkg/Override/HttpDynamicCommand/HttpApp.inf
 	TidePkg/Application/ReadFileAndSave/ReadFileAndSave.inf
+	TidePkg/Application/Dumpasn1/Dumpasn1.inf
 
 [BuildOptions.Common]
 

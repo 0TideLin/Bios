@@ -15,7 +15,7 @@ function ExportBuildEnv()
   #
   #iasl工具
   #
-  export IASL_PREFIX=$PWD/TidePkg/ToolChain/acpica/  
+  export IASL_PREFIX=$PWD/TidePkg/ToolChain/acpica/
 
 
   echo WORKSPACE:$WORKSPACE
@@ -33,10 +33,10 @@ function BuildCode()
   if  [[  ! -f `which build` ||  ! -f `which GenFv` ]]; #此处是``，不是‘’, 沙比了
   then
     #build the tools if they don't yet exist. Bin scheme
-    echo Building tools as they are not in the path 
+    echo Building tools as they are not in the path
     make -C $EDK_TOOLS_PATH
   elif [[ ( -f `which build` || -f `which GenFv`) && ! -d $EDK_TOOLS_PATH/Source/C/bin ]];
-  then 
+  then
     #build the tools if they don't yet exist. BinWrapper scheme
     echo Building tools no $EDK_TOOLS_PATH/Source/C/bin directory
     make -C $EDK_TOOLS_PATH
