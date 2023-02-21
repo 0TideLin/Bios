@@ -1,0 +1,390 @@
+From 8ab856e47bf0437f56e637e6b8c776c768669469 Mon Sep 17 00:00:00 2001
+From: Zhang Shuzhen <zhangshuzhen@live.cn>
+Date: Fri, 3 Feb 2023 17:44:44 +0800
+Subject: [PATCH] now we can parse kylin sig.
+
+---
+ apps/build.sh              |  10 +++++++
+ apps/grb.sig               | Bin 0 -> 1490 bytes
+ apps/pkcs7.c               |  59 +++++++++++++++++++++++++++++++++++++
+ crypto/objects/obj_dat.h   |  35 ++++++++++++++++++----
+ crypto/objects/obj_mac.num |   5 ++++
+ crypto/objects/objects.txt |   6 ++++
+ crypto/pkcs7/pk7_asn1.c    |   2 ++
+ fuzz/oids.txt              |   5 ++++
+ include/openssl/obj_mac.h  |  25 ++++++++++++++++
+ 9 files changed, 142 insertions(+), 5 deletions(-)
+ create mode 100755 apps/build.sh
+ create mode 100644 apps/grb.sig
+
+diff --git a/apps/build.sh b/apps/build.sh
+new file mode 100755
+index 0000000000..b3f70bae39
+--- /dev/null
++++ b/apps/build.sh
+@@ -0,0 +1,10 @@
++#/bin/bash
++cd ..
++make
++cd apps
++export LD_LIBRARY_PATH=../
++./openssl version
++./openssl pkcs7 -inform DER -in grb.sig -print 
++# ./openssl pkcs7 -inform DER -in grb.sig -print -out grb.tmp
++# ./openssl pkcs7 -inform DER -in signed_data.sig -print
++# ./openssl pkcs7 -inform DER -in ms.sig -print > 1.txt
+\ No newline at end of file
+diff --git a/apps/grb.sig b/apps/grb.sig
+new file mode 100644
+index 0000000000000000000000000000000000000000..7a0ed5811f9291c3b1d6b0287a94a6b2108919eb
+GIT binary patch
+literal 1490
+zcmXqLVm-&krPU~NK9r4-g^6iF6YD;MCe~d{jEsi-2E1&XU@69CK_*rP0|O+Lj0==l
+z6t;h7KJrA^YnO_<%?_T$nFYQ7yZ>FuQt3-PnPDc8TVAoCiDj)p6U#~<4p_j<#K^?N
+zB_+TB1dKbs%rW3%<A9o8YT#nXZNSOK9LmBb%;fB6$ZNn2;&Ab>IC(ic!noW}uDF3H
+zNS2w0&nY!CD>E-$A=uYQ!P(J3PMp`s(7?pN!qChB2%^M!jX_*XLsL^rQ_CoW#wCW*
+z29hAXnmj_5hK5E4hK6Rw1_owkmgZ)bfrg3(@(_b1UhbOoa@YJ9d)GhNz3thY&X+SM
+zJZ)X`w10=8gn<}H2{#YFOE6HsyD`{8W1vA$&0IXVHADT#&cmdn1oJQlGKY-^=zD`m
+z17S9Htu~KywoHt$Fly3ec4A=Bybyf;gQ}?K&NT;5EKU9Ey>mgN?uI|Ha}s83jlXdA
+zIA>SD?fLQ&0zdZ(|B<?vH08X$oMord(}~QnUp0+2+NWeMZelua(8P2Y>`z%`7NBn$
+zMC6~HztVqHNo%^7W|!!5v6GWbj%+iK1^QB!k420{q$5gI;GEBK;i#gV0KRvYZgE08
+zXMm$emY;=%nThRyLF0UoVtJOv=?0Bc3=$W_FNj?dZ4e3bAth02C~P1IjuK(6<U}LG
+z<f0ry6LSOo1-c8g+cYyuN(!v>^?`zVNm<E>dih1^ddYbpzCJ>+9*}FG0#3PY?~Q=z
+znvq3}N5snuGx`k@*f_M=7+G1_foehwf((>ld;`WdaewFF0H9_0$;Ac8wi#%{6*0BR
+z<8o1AW^r+8YLS5hD4-NrEDg*JOu=~z<Rm6W0}TT;m@!O@Vp33J%FD}<t<p~}C<cZG
+zXF{6?W7`iWpd*37&+y+s3CVLDEF#!aHgW(kG2sjVc_fqgSOj_a4GoM8EDQ_`4a|*=
+z&CE=ZjRD$@D;#x^j1gy%=aDsXFfueXFtGIU0_H{ZTxXyFPU9CuSb#=icfBx@fpRRY
+zJj`aMCdkDHvpa)<3zLF~)0q_Z4S`h-Q@?MGx8ew3bL4c6+n&envAHS1_EzLVCWS!#
+zq|611&oUwpo_`UhxOHxk$LCiy@t5;j?)CiNn)Gv`VIwd#?*%3jVC+++NJ1&_(27$y
+zw@H_gm4U?#<OR`FOK+XqbL98TwQ80^`|`BSrIbHzU=E(rz_4?kBafsElY&>{_p{w@
+gh4;QriWhDZj#S$l-=D>ze6WJe`t!x@OSbR;0Hu75zyJUM
+
+literal 0
+HcmV?d00001
+
+diff --git a/apps/pkcs7.c b/apps/pkcs7.c
+index c3e9f5c692..45523774fb 100644
+--- a/apps/pkcs7.c
++++ b/apps/pkcs7.c
+@@ -19,6 +19,7 @@
+ #include <openssl/x509.h>
+ #include <openssl/pkcs7.h>
+ #include <openssl/pem.h>
++#include <openssl/asn1.h>
+ 
+ typedef enum OPTION_choice {
+     OPT_ERR = -1, OPT_EOF = 0, OPT_HELP,
+@@ -43,6 +44,49 @@ const OPTIONS pkcs7_options[] = {
+     {NULL}
+ };
+ 
++static
++void
++DumpHex (
++  unsigned int  Indent,
++  unsigned int  Offset,
++  unsigned int  DataSize,
++  void   *UserData
++  )
++{
++  u_int8_t  *Data;
++  char  Val[50];
++  char  Str[20];
++  u_int8_t  TempByte;
++  unsigned int  Size;
++  unsigned int  Index;
++  static const char  mHex[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
++
++  printf("DumpHex start :\n");
++  Data = UserData;
++  while (DataSize != 0) {
++    Size = 16;
++    if (Size > DataSize) {
++      Size = DataSize;
++    }
++
++    for (Index = 0; Index < Size; Index += 1) {
++      TempByte           = Data[Index];
++      Val[Index * 3 + 0] = mHex[TempByte >> 4];
++      Val[Index * 3 + 1] = mHex[TempByte & 0xF];
++      Val[Index * 3 + 2] = (char)((Index == 7) ? '-' : ' ');
++      Str[Index]         = (char)((TempByte < ' ' || TempByte > 'z') ? '.' : TempByte);
++    }
++
++    Val[Index * 3] = 0;
++    Str[Index]     = 0;
++	printf("%*s%08X: %-48s *%s*\r\n", Indent, "", Offset, Val, Str);
++
++    Data     += Size;
++    Offset   += Size;
++    DataSize -= Size;
++  }
++  printf("DumpHex end :\n");
++}
+ int pkcs7_main(int argc, char **argv)
+ {
+     ENGINE *e = NULL;
+@@ -121,12 +165,27 @@ int pkcs7_main(int argc, char **argv)
+     if (p7_print)
+         PKCS7_print_ctx(out, p7, 0, NULL);
+ 
++    DumpHex(2, 0, 512, (void *)p7);
++
++    printf("p7->d.sign->version:0x%lX\n",p7->d.sign->version);
++    printf("p7->d.sign->md_algs:0x%lX\n",p7->d.sign->md_algs);
++    printf("p7->d.sign->cert:0x%lX\n",p7->d.sign->cert);
++    printf("p7->d.sign->crl:0x%lX\n",p7->d.sign->crl);
++    printf("p7->d.sign->signer_info:0x%lX\n",p7->d.sign->signer_info);
++    printf("p7->d.sign->contents:0x%lX\n",p7->d.sign->contents);
++
++    printf("p7->d.other->type:0x%lX\n",p7->d.other->type);
++    printf("p7->d.other->value:0x%lX\n",p7->d.other->value);
++    printf("OBJ_obj2nid(p7->type):0x%ld\n",OBJ_obj2nid(p7->type));
++
++
+     if (print_certs) {
+         STACK_OF(X509) *certs = NULL;
+         STACK_OF(X509_CRL) *crls = NULL;
+ 
+         i = OBJ_obj2nid(p7->type);
+         switch (i) {
++        case NID_gmt0010_signeddata:
+         case NID_pkcs7_signed:
+             if (p7->d.sign != NULL) {
+                 certs = p7->d.sign->cert;
+diff --git a/crypto/objects/obj_dat.h b/crypto/objects/obj_dat.h
+index d1b1bc7faf..e26360784d 100644
+--- a/crypto/objects/obj_dat.h
++++ b/crypto/objects/obj_dat.h
+@@ -10,7 +10,7 @@
+  */
+ 
+ /* Serialized OID's */
+-static const unsigned char so[7762] = {
++static const unsigned char so[7808] = {
+     0x2A,0x86,0x48,0x86,0xF7,0x0D,                 /* [    0] OBJ_rsadsi */
+     0x2A,0x86,0x48,0x86,0xF7,0x0D,0x01,            /* [    6] OBJ_pkcs */
+     0x2A,0x86,0x48,0x86,0xF7,0x0D,0x02,0x02,       /* [   13] OBJ_md2 */
+@@ -1076,9 +1076,14 @@ static const unsigned char so[7762] = {
+     0x2A,0x85,0x03,0x07,0x01,0x02,0x01,0x01,0x04,  /* [ 7736] OBJ_id_tc26_gost_3410_2012_256_paramSetD */
+     0x2A,0x86,0x48,0x86,0xF7,0x0D,0x02,0x0C,       /* [ 7745] OBJ_hmacWithSHA512_224 */
+     0x2A,0x86,0x48,0x86,0xF7,0x0D,0x02,0x0D,       /* [ 7753] OBJ_hmacWithSHA512_256 */
++    0x2A,0x81,0x1C,0xCF,0x55,0x01,0x83,0x11,0x02,  /* [ 7761] OBJ_hmac_sm3 */
++    0x2A,0x81,0x1C,0xCF,0x55,0x01,0x82,0x2D,0x01,  /* [ 7770] OBJ_sm2sign */
++    0x2A,0x81,0x1C,0xCF,0x55,0x06,0x01,0x04,0x02,0x01,  /* [ 7779] OBJ_gmt0010_data */
++    0x2A,0x81,0x1C,0xCF,0x55,0x06,0x01,0x04,0x02,0x02,  /* [ 7789] OBJ_gmt0010_signeddata */
++    0x2A,0x81,0x1C,0xCF,0x55,0x01,0x83,0x75             /* [ 7799] OBJ_hmac_sm3 */
+ };
+ 
+-#define NUM_NID 1195
++#define NUM_NID 1200
+ static const ASN1_OBJECT nid_objs[NUM_NID] = {
+     {"UNDEF", "undefined", NID_undef},
+     {"rsadsi", "RSA Data Security, Inc.", NID_rsadsi, 6, &so[0]},
+@@ -2275,9 +2280,14 @@ static const ASN1_OBJECT nid_objs[NUM_NID] = {
+     {"magma-mac", "magma-mac", NID_magma_mac},
+     {"hmacWithSHA512-224", "hmacWithSHA512-224", NID_hmacWithSHA512_224, 8, &so[7745]},
+     {"hmacWithSHA512-256", "hmacWithSHA512-256", NID_hmacWithSHA512_256, 8, &so[7753]},
++    {"HMAC-SM3", "hmac-sm3", NID_hmac_sm3, 9, &so[7761]},
++    {"SM2SIGN", "sm2sign", NID_sm2sign, 9, &so[7770]},
++    {"GM_DATA", "gmt0010_data", NID_gmt0010_data, 10, &so[7779]},
++    {"GM_SIGDATA", "gmt0010_signeddata", NID_gmt0010_signeddata, 10, &so[7789]},
++    {"SM3WithSM2", "SM3WithSM2", NID_SM3WithSM2, 8, &so[7799]},
+ };
+ 
+-#define NUM_SN 1186
++#define NUM_SN 1191
+ static const unsigned int sn_objs[NUM_SN] = {
+      364,    /* "AD_DVCS" */
+      419,    /* "AES-128-CBC" */
+@@ -2424,11 +2434,15 @@ static const unsigned int sn_objs[NUM_SN] = {
+      297,    /* "DVCS" */
+     1087,    /* "ED25519" */
+     1088,    /* "ED448" */
++    1197,    /* "GM_DATA" */
++    1198,    /* "GM_SIGDATA" */
+       99,    /* "GN" */
+     1036,    /* "HKDF" */
+      855,    /* "HMAC" */
+      780,    /* "HMAC-MD5" */
+      781,    /* "HMAC-SHA1" */
++    1195,    /* "HMAC-SM3" */
++    1199,    /* "SM3WithSM2" */
+      381,    /* "IANA" */
+       34,    /* "IDEA-CBC" */
+       35,    /* "IDEA-CFB" */
+@@ -2543,6 +2557,7 @@ static const unsigned int sn_objs[NUM_SN] = {
+     1100,    /* "SHAKE128" */
+     1101,    /* "SHAKE256" */
+     1172,    /* "SM2" */
++    1196,    /* "SM2SIGN" */
+     1143,    /* "SM3" */
+     1134,    /* "SM4-CBC" */
+     1137,    /* "SM4-CFB" */
+@@ -3467,7 +3482,7 @@ static const unsigned int sn_objs[NUM_SN] = {
+     1093,    /* "x509ExtAdmission" */
+ };
+ 
+-#define NUM_LN 1186
++#define NUM_LN 1191
+ static const unsigned int ln_objs[NUM_LN] = {
+      363,    /* "AD Time Stamping" */
+      405,    /* "ANSI X9.62" */
+@@ -3961,6 +3976,8 @@ static const unsigned int ln_objs[NUM_LN] = {
+      509,    /* "generationQualifier" */
+      601,    /* "generic cryptogram" */
+       99,    /* "givenName" */
++    1197,    /* "gmt0010_data" */
++    1198,    /* "gmt0010_signeddata" *
+      976,    /* "gost-mac-12" */
+     1009,    /* "gost89-cbc" */
+      814,    /* "gost89-cnt" */
+@@ -3981,6 +3998,7 @@ static const unsigned int ln_objs[NUM_LN] = {
+     1103,    /* "hmac-sha3-256" */
+     1104,    /* "hmac-sha3-384" */
+     1105,    /* "hmac-sha3-512" */
++    1195,    /* "hmac-sm3" */
+      797,    /* "hmacWithMD5" */
+      163,    /* "hmacWithSHA1" */
+      798,    /* "hmacWithSHA224" */
+@@ -4600,7 +4618,9 @@ static const unsigned int ln_objs[NUM_LN] = {
+     1062,    /* "siphash" */
+     1142,    /* "sm-scheme" */
+     1172,    /* "sm2" */
++    1196,    /* "sm2sign" */
+     1143,    /* "sm3" */
++    1199,    /* "SM3WithSM2" */
+     1144,    /* "sm3WithRSAEncryption" */
+     1134,    /* "sm4-cbc" */
+     1137,    /* "sm4-cfb" */
+@@ -4657,7 +4677,7 @@ static const unsigned int ln_objs[NUM_LN] = {
+      125,    /* "zlib compression" */
+ };
+ 
+-#define NUM_OBJ 1071
++#define NUM_OBJ 1076
+ static const unsigned int obj_objs[NUM_OBJ] = {
+        0,    /* OBJ_undef                        0 */
+      181,    /* OBJ_iso                          1 */
+@@ -5126,6 +5146,7 @@ static const unsigned int obj_objs[NUM_OBJ] = {
+     1139,    /* OBJ_sm4_ctr                      1 2 156 10197 1 104 7 */
+     1172,    /* OBJ_sm2                          1 2 156 10197 1 301 */
+     1143,    /* OBJ_sm3                          1 2 156 10197 1 401 */
++    1199,    /* OBJ_SM3WithSM2                     1 2 156 10197 1 501
+     1144,    /* OBJ_sm3WithRSAEncryption         1 2 156 10197 1 504 */
+      776,    /* OBJ_seed_ecb                     1 2 410 200004 1 3 */
+      777,    /* OBJ_seed_cbc                     1 2 410 200004 1 4 */
+@@ -5338,6 +5359,8 @@ static const unsigned int obj_objs[NUM_OBJ] = {
+      439,    /* OBJ_pilotAttributeSyntax         0 9 2342 19200300 100 3 */
+      440,    /* OBJ_pilotObjectClass             0 9 2342 19200300 100 4 */
+      441,    /* OBJ_pilotGroups                  0 9 2342 19200300 100 10 */
++    1196,    /* OBJ_sm2sign                      1 2 156 10197 1 301 1 */
++    1195,    /* OBJ_hmac_sm3                     1 2 156 10197 1 401 2 */
+     1065,    /* OBJ_aria_128_ecb                 1 2 410 200046 1 1 1 */
+     1066,    /* OBJ_aria_128_cbc                 1 2 410 200046 1 1 2 */
+     1067,    /* OBJ_aria_128_cfb128              1 2 410 200046 1 1 3 */
+@@ -5597,6 +5620,8 @@ static const unsigned int obj_objs[NUM_OBJ] = {
+      455,    /* OBJ_pilotOrganization            0 9 2342 19200300 100 4 20 */
+      456,    /* OBJ_pilotDSA                     0 9 2342 19200300 100 4 21 */
+      457,    /* OBJ_qualityLabelledData          0 9 2342 19200300 100 4 22 */
++    1197,    /* OBJ_gmt0010_data                 1 2 156 10197 6 1 4 2 1 */
++    1198,    /* OBJ_gmt0010_signeddata           1 2 156 10197 6 1 4 2 2 */
+     1152,    /* OBJ_dstu28147                    1 2 804 2 1 1 1 1 1 1 */
+     1156,    /* OBJ_hmacWithDstu34311            1 2 804 2 1 1 1 1 1 2 */
+     1157,    /* OBJ_dstu34311                    1 2 804 2 1 1 1 1 2 1 */
+diff --git a/crypto/objects/obj_mac.num b/crypto/objects/obj_mac.num
+index 1b6a9c61a1..760def37e2 100644
+--- a/crypto/objects/obj_mac.num
++++ b/crypto/objects/obj_mac.num
+@@ -1192,3 +1192,8 @@ magma_cfb		1191
+ magma_mac		1192
+ hmacWithSHA512_224		1193
+ hmacWithSHA512_256		1194
++hmac_sm3		        1195
++sm2sign		            1196
++gmt0010_data		    1197
++gmt0010_signeddata		1198
++SM3WithSM2		        1199
+diff --git a/crypto/objects/objects.txt b/crypto/objects/objects.txt
+index c49d4c568b..0a83f365e4 100644
+--- a/crypto/objects/objects.txt
++++ b/crypto/objects/objects.txt
+@@ -381,10 +381,16 @@ rsadsi 2 6		:			: hmacWithMD5
+ rsadsi 2 7		:			: hmacWithSHA1
+ 
+ sm-scheme 301           : SM2                   : sm2
++sm-scheme 301 1			: SM2SIGN				: sm2sign
+ 
+ sm-scheme 401           : SM3                   : sm3
++sm-scheme 401 2			: HMAC-SM3				: hmac-sm3
++sm-scheme 501			: SM3WithSM2			: SM3WithSM2
+ sm-scheme 504           : RSA-SM3		: sm3WithRSAEncryption
+ 
++1 2 156 10197 6 1 4 2 2 		:GM_SIGDATA			:gmt0010_signeddata
++1 2 156 10197 6 1 4 2 1 		:GM_DATA			:gmt0010_data
++
+ # From RFC4231
+ rsadsi 2 8		:			: hmacWithSHA224
+ rsadsi 2 9		:			: hmacWithSHA256
+diff --git a/crypto/pkcs7/pk7_asn1.c b/crypto/pkcs7/pk7_asn1.c
+index cd9fb4f509..de5b20478a 100644
+--- a/crypto/pkcs7/pk7_asn1.c
++++ b/crypto/pkcs7/pk7_asn1.c
+@@ -20,6 +20,8 @@
+ ASN1_ADB_TEMPLATE(p7default) = ASN1_EXP_OPT(PKCS7, d.other, ASN1_ANY, 0);
+ 
+ ASN1_ADB(PKCS7) = {
++        ADB_ENTRY(NID_gmt0010_data, ASN1_NDEF_EXP_OPT(PKCS7, d.data, ASN1_OCTET_STRING_NDEF, 0)),
++        ADB_ENTRY(NID_gmt0010_signeddata, ASN1_NDEF_EXP_OPT(PKCS7, d.sign, PKCS7_SIGNED, 0)),
+         ADB_ENTRY(NID_pkcs7_data, ASN1_NDEF_EXP_OPT(PKCS7, d.data, ASN1_OCTET_STRING_NDEF, 0)),
+         ADB_ENTRY(NID_pkcs7_signed, ASN1_NDEF_EXP_OPT(PKCS7, d.sign, PKCS7_SIGNED, 0)),
+         ADB_ENTRY(NID_pkcs7_enveloped, ASN1_NDEF_EXP_OPT(PKCS7, d.enveloped, PKCS7_ENVELOPE, 0)),
+diff --git a/fuzz/oids.txt b/fuzz/oids.txt
+index eda55e4e79..693b2233e7 100644
+--- a/fuzz/oids.txt
++++ b/fuzz/oids.txt
+@@ -1063,3 +1063,8 @@ OBJ_id_tc26_gost_3410_2012_256_paramSetC="\x2A\x85\x03\x07\x01\x02\x01\x01\x03"
+ OBJ_id_tc26_gost_3410_2012_256_paramSetD="\x2A\x85\x03\x07\x01\x02\x01\x01\x04"
+ OBJ_hmacWithSHA512_224="\x2A\x86\x48\x86\xF7\x0D\x02\x0C"
+ OBJ_hmacWithSHA512_256="\x2A\x86\x48\x86\xF7\x0D\x02\x0D"
++OBJ_hmac_sm3="\x2A\x81\x1C\xCF\x55\x01\x83\x11\x02"
++OBJ_sm2sign="\x2A\x81\x1C\xCF\x55\x01\x82\x2D\x01"
++OBJ_gmt0010_data="\x2A\x81\x1C\xCF\x55\x06\x01\x04\x02\x01"
++OBJ_gmt0010_signeddata="\x2A\x81\x1C\xCF\x55\x06\x01\x04\x02\x02"
++OBJ_SM3WithSM2="\x2A\x81\x1C\xCF\x55\x01\x83\x75"
+diff --git a/include/openssl/obj_mac.h b/include/openssl/obj_mac.h
+index 483fc0509e..62fd3180a0 100644
+--- a/include/openssl/obj_mac.h
++++ b/include/openssl/obj_mac.h
+@@ -5196,3 +5196,28 @@
+ #define LN_uacurve9             "DSTU curve 9"
+ #define NID_uacurve9            1169
+ #define OBJ_uacurve9            OBJ_dstu4145le,2L,9L
++
++#define SN_hmac_sm3 "HMAC-SM3"
++#define LN_hmac_sm3 "hmac-sm3"
++#define NID_hmac_sm3 1195
++#define OBJ_hmac_sm3 OBJ_sm_scheme, 401L, 2L
++
++#define SN_sm2sign "SM2SIGN"
++#define LN_sm2sign "sm2sign"
++#define NID_sm2sign 1196
++#define OBJ_sm2sign OBJ_sm_scheme, 301L, 1L
++
++#define SN_gmt0010_data "GM_DATA"
++#define LN_gmt0010_data "gmt0010_data"
++#define NID_gmt0010_data 1197
++#define OBJ_gmt0010_data 1L, 2L, 156L, 10197L, 6L, 1L, 4L, 2L, 1L
++
++#define SN_gmt0010_signeddata "GM_SIGDATA"
++#define LN_gmt0010_signeddata "gmt0010_signeddata"
++#define NID_gmt0010_signeddata 1198
++#define OBJ_gmt0010_signeddata 1L, 2L, 156L, 10197L, 6L, 1L, 4L, 2L, 2L
++
++#define SN_SM3WithSM2           "SM2-SM3"
++#define LN_SM3WithSM2           "SM3WithSM2"
++#define NID_SM3WithSM2          1199
++#define OBJ_SM3WithSM2          OBJ_sm_scheme, 501L
+-- 
+2.39.1
+

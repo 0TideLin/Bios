@@ -1,0 +1,1110 @@
+From f3c4e926f14105eb36a69a81511a5ae2b484e749 Mon Sep 17 00:00:00 2001
+From: Zhang Shuzhen <zhangshuzhen@live.cn>
+Date: Mon, 30 Jan 2023 03:14:24 +0800
+Subject: [PATCH] Now sm2 sign and verify can pass with sbsigntools from
+ github. keygen: openssl3.2.0 cmd: ./openssl version ./openssl ecparam -name
+ SM2 -genkey -out sm2_ec.key ./openssl ec -in sm2_ec.key -pubout -out
+ sm2_ec.pubkey ./openssl req -new -x509 -sm3 -key sm2_ec.key -out sm2_ec.cert
+ -days 10000 -subj '/C=CN/O=BJKD/OU=GD_SM2' signtool:
+ https://github.com/kyrie-z/sbsigntools_sm2.git cmd: sbsign --key sm2_ec.key
+ --cert sm2_ec.cert --output test.efi a.efi sbverify --cert sm2_ec.cert
+ test.efi
+
+---
+ CryptoPkg/Include/Library/BaseCryptLib.h      |   4 +
+ .../BaseCryptLib/Pk/CryptAuthenticode.c       | 337 ++++++++++++++++++
+ CryptoPkg/Library/BaseCryptLib/Pk/CryptEc.c   |   3 +
+ .../Library/BaseCryptLib/RuntimeCryptLib.inf  |  30 +-
+ EmulatorPkg/EmulatorPkg.dsc                   |   4 +-
+ MdePkg/MdePkg.dec                             |   2 +
+ .../Library/AuthVariableLib/AuthService.c     |  22 +-
+ .../DxeImageVerificationLib.c                 | 180 +++++++++-
+ .../DxeImageVerificationLib.h                 |   3 +-
+ .../DxeImageVerificationLib.inf               |   2 +
+ 10 files changed, 551 insertions(+), 36 deletions(-)
+
+diff --git a/CryptoPkg/Include/Library/BaseCryptLib.h b/CryptoPkg/Include/Library/BaseCryptLib.h
+index a52bd91ad6..acc9c2a576 100644
+--- a/CryptoPkg/Include/Library/BaseCryptLib.h
++++ b/CryptoPkg/Include/Library/BaseCryptLib.h
+@@ -20,6 +20,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
+ #define CRYPTO_NID_SHA256  0x0001
+ #define CRYPTO_NID_SHA384  0x0002
+ #define CRYPTO_NID_SHA512  0x0003
++#define CRYPTO_NID_SM3     0x0004
+ 
+ // Key Exchange
+ #define CRYPTO_NID_SECP256R1  0x0204
+@@ -27,6 +28,9 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
+ #define CRYPTO_NID_SECP521R1  0x0206
+ 
+ ///
++#define CRYPTO_NID_SM2  0x0207
++
++
+ /// MD5 digest size in bytes
+ ///
+ #define MD5_DIGEST_SIZE  16
+diff --git a/CryptoPkg/Library/BaseCryptLib/Pk/CryptAuthenticode.c b/CryptoPkg/Library/BaseCryptLib/Pk/CryptAuthenticode.c
+index 6b0dddd4af..071735493c 100644
+--- a/CryptoPkg/Library/BaseCryptLib/Pk/CryptAuthenticode.c
++++ b/CryptoPkg/Library/BaseCryptLib/Pk/CryptAuthenticode.c
+@@ -20,6 +20,14 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
+ #include <openssl/x509.h>
+ #include <openssl/pkcs7.h>
+ 
++#include <openssl/bio.h>
++#include <openssl/pem.h>
++
++#include <openssl/x509v3.h>
++#include <openssl/asn1t.h>
++
++static const int cert_name_len = 160;
++
+ //
+ // OID ASN.1 Value for SPC_INDIRECT_DATA_OBJID
+ //
+@@ -27,6 +35,318 @@ GLOBAL_REMOVE_IF_UNREFERENCED const UINT8  mSpcIndirectOidValue[] = {
+   0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x01, 0x04
+ };
+ 
++
++STATIC CONST CHAR8  Hex[] = {
++  '0',
++  '1',
++  '2',
++  '3',
++  '4',
++  '5',
++  '6',
++  '7',
++  '8',
++  '9',
++  'A',
++  'B',
++  'C',
++  'D',
++  'E',
++  'F'
++};
++VOID
++EFIAPI
++DumpHex (
++  IN UINTN  Indent,
++  IN UINTN  Offset,
++  IN UINTN  DataSize,
++  IN VOID   *UserData
++  )
++{
++  UINT8  *Data;
++
++  CHAR8  Val[50];
++
++  CHAR8  Str[20];
++
++  UINT8  TempByte;
++  UINTN  Size;
++  UINTN  Index;
++
++	DEBUG((EFI_D_INFO,"DumpHex Start\n"));
++  Data = UserData;
++  while (DataSize != 0) {
++    Size = 16;
++    if (Size > DataSize) {
++      Size = DataSize;
++    }
++
++    for (Index = 0; Index < Size; Index += 1) {
++      TempByte           = Data[Index];
++      Val[Index * 3 + 0] = Hex[TempByte >> 4];
++      Val[Index * 3 + 1] = Hex[TempByte & 0xF];
++      Val[Index * 3 + 2] = (CHAR8)((Index == 7) ? '-' : ' ');
++      Str[Index]         = (CHAR8)((TempByte < ' ' || TempByte > '~') ? '.' : TempByte);
++    }
++
++    Val[Index * 3] = 0;
++    Str[Index]     = 0;
++    DEBUG((EFI_D_INFO,"%*a%08X: %-48a *%a*\r\n", Indent, "", Offset, Val, Str));
++
++    Data     += Size;
++    Offset   += Size;
++    DataSize -= Size;
++  }
++	DEBUG((EFI_D_INFO,"DumpHex End\n"));
++}
++
++static void print_signature_info(PKCS7 *p7)
++{
++	char subject_name[cert_name_len + 1], issuer_name[cert_name_len + 1];
++	PKCS7_SIGNER_INFO *si;
++	X509 *cert;
++	int i;
++
++  DEBUG((EFI_D_INFO,"chz %a-%d,image signature issuers:\n",__FUNCTION__,__LINE__));
++	// printf("image signature issuers:\n");
++
++	for (i = 0; i < sk_PKCS7_SIGNER_INFO_num(p7->d.sign->signer_info);
++			i++) {
++		si = sk_PKCS7_SIGNER_INFO_value(p7->d.sign->signer_info, i);
++		X509_NAME_oneline(si->issuer_and_serial->issuer,
++				issuer_name, cert_name_len);
++		printf(" - %s\n", issuer_name);
++    DEBUG((EFI_D_INFO," - %s\n", issuer_name));
++
++	}
++  DEBUG((EFI_D_INFO,"chz %a-%d,image signature certificates:\n",__FUNCTION__,__LINE__));
++
++	for (i = 0; i < sk_X509_num(p7->d.sign->cert); i++) {
++		cert = sk_X509_value(p7->d.sign->cert, i);
++		X509_NAME_oneline(X509_get_subject_name(cert),
++				subject_name, cert_name_len);
++		X509_NAME_oneline(X509_get_issuer_name(cert),
++				issuer_name, cert_name_len);
++
++		DEBUG((EFI_D_INFO," - subject: %s\n", subject_name));
++		DEBUG((EFI_D_INFO,"   issuer:  %s\n", issuer_name));
++	}
++}
++static void print_certificate_store_certs(X509_STORE *certs)
++{
++	char subject_name[cert_name_len + 1], issuer_name[cert_name_len + 1];
++	STACK_OF(X509_OBJECT) *objs;
++	X509_OBJECT *obj;
++  X509 *cert;
++	int i;
++	UINT8 *data;
++	data = (UINT8 *)certs;
++
++  DEBUG((EFI_D_INFO, "\nprint_certificate_store_certs bin :\n"));
++
++  for (i = 0; i < 64; i++)
++  {
++    DEBUG((EFI_D_INFO, "%02X ", data[i]));
++    if ((i + 1) % 16 == 0)
++    {
++      DEBUG((EFI_D_INFO, "\n"));
++    }
++  }
++  DEBUG((EFI_D_INFO, "\n"));
++  DEBUG((EFI_D_INFO,"certificate store:\n"));
++  
++
++	objs = X509_STORE_get0_objects(certs);
++
++	for (i = 0; i < sk_X509_OBJECT_num(objs); i++) {
++		obj = sk_X509_OBJECT_value(objs, i);
++
++		if (X509_OBJECT_get_type(obj) != X509_LU_X509)
++			continue;
++
++		cert = X509_OBJECT_get0_X509(obj);
++
++		X509_NAME_oneline(X509_get_subject_name(cert),
++				subject_name, cert_name_len);
++		X509_NAME_oneline(X509_get_issuer_name(cert),
++				issuer_name, cert_name_len);
++
++		DEBUG((EFI_D_INFO," - subject: %s\n", subject_name));
++		DEBUG((EFI_D_INFO,"   issuer:  %s\n", issuer_name));
++	}
++}
++
++static void chz_get_x509_cert(IN OUT X509_STORE *certs, IN CONST UINT8 *TrustedCert, IN UINTN CertSize)
++{
++  X509 *cert = NULL;
++  BIO *bio;
++
++  // bio = BIO_new_file(filename, "r");
++  bio = BIO_new_mem_buf(TrustedCert, CertSize);
++  if (!bio)
++  {
++    DEBUG((EFI_D_INFO, "chz get cert fail\n"));
++    return;
++  }
++
++  DEBUG((EFI_D_INFO, "\n chz cert bio :\n"));
++  DumpHex(2, 0, 64, (VOID *)bio);
++
++  DEBUG((EFI_D_INFO, "\n chz get cert bin :\n"));
++  cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
++  if (cert != NULL)
++    DumpHex(2, 0, 64, (VOID *)cert);
++  else
++  {
++    DEBUG((EFI_D_INFO, "\n chz get cert bin fail\n"));
++    return;
++  }
++
++  X509_STORE_add_cert(certs, cert);
++
++  return;
++}
++static int cert_in_store(X509 *cert, X509_STORE_CTX *ctx)
++{
++	STACK_OF(X509_OBJECT) *objs;
++	X509_OBJECT *obj;
++	int i;
++
++	objs = X509_STORE_get0_objects(X509_STORE_CTX_get0_store(ctx));
++
++	for (i = 0; i < sk_X509_OBJECT_num(objs); i++) {
++		obj = sk_X509_OBJECT_value(objs, i);
++
++		if (X509_OBJECT_get_type(obj) == X509_LU_X509 &&
++		    !X509_cmp(X509_OBJECT_get0_X509(obj), cert))
++			return 1;
++	}
++
++	return 0;
++}
++static int x509_verify_cb(int status, X509_STORE_CTX *ctx)
++{
++	int err = X509_STORE_CTX_get_error(ctx);
++
++	/* also accept code-signing keys */
++	if (err == X509_V_ERR_INVALID_PURPOSE &&
++			X509_get_extended_key_usage(X509_STORE_CTX_get0_cert(ctx))
++			== XKU_CODE_SIGN)
++		status = 1;
++
++	else if (err == X509_V_ERR_CERT_UNTRUSTED ||
++		 err == X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT ||
++		 err == X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE) {
++		/* all certs given with the --cert argument are trusted */
++
++		if (cert_in_store(X509_STORE_CTX_get_current_cert(ctx), ctx))
++			status = 1;
++	} else if (err == X509_V_ERR_CERT_HAS_EXPIRED ||
++		   err == X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD ||
++		   err == X509_V_ERR_CERT_NOT_YET_VALID ||
++		   err == X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY ||
++		   err == X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD)
++		/* UEFI explicitly allows expired certificates */
++		status = 1;
++
++	return status;
++}
++VOID IDC_get(PKCS7 *p7, BIO *bio)
++{
++	const unsigned char *buf, *idcbuf;
++	ASN1_STRING *str;
++
++	/* extract the idc from the signed PKCS7 'other' data */
++	str = p7->d.sign->contents->d.other->value.asn1_string;
++
++	idcbuf = buf = ASN1_STRING_get0_data(str);
++
++	/* If we were passed a BIO, write the idc data, minus type and length,
++	 * to the BIO. This can be used to PKCS7_verify the idc */
++	if (bio) {
++		uint32_t idclen;
++		uint8_t tmp;
++
++		tmp = idcbuf[1];
++
++		if (!(tmp & 0x80)) {
++			idclen = tmp & 0x7f;
++			idcbuf += 2;
++		} else if ((tmp & 0x82) == 0x82) {
++			idclen = (idcbuf[2] << 8) +
++				 idcbuf[3];
++			idcbuf += 4;
++    }
++    else
++    {
++      DEBUG((EFI_D_INFO, "Invalid ASN.1 data in IndirectDataContext?\n"));
++      return ;
++    }
++
++    BIO_write(bio, idcbuf, idclen);
++	}
++}
++// return status :
++// 0.fail verify.
++// 1.pass verify.
++//
++BOOLEAN
++EFIAPI
++AuthenticodeVerify_SM2withSM3 (
++  IN  CONST UINT8  *AuthData,
++  IN  UINTN        DataSize,
++  IN  CONST UINT8  *TrustedCert,
++  IN  UINTN        CertSize,
++  IN  CONST UINT8  *ImageHash,
++  IN  UINTN        HashSize
++  )
++{
++  PKCS7        *Pkcs7;
++  CONST UINT8  *Temp;
++  UINTN        rc,flags;
++
++	BIO *idcbio;
++
++  X509_STORE *certs;
++	certs = X509_STORE_new();
++
++  DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++  Temp  = AuthData;
++  Pkcs7 = d2i_PKCS7 (NULL, &Temp, (int)DataSize);
++  if (Pkcs7 == NULL) {
++    DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++    return 0;
++  }
++  DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++
++  DEBUG((EFI_D_INFO, "AuthData to PKCS7:\n"));
++  DumpHex(2, 0, 64, Pkcs7);
++  DEBUG((EFI_D_INFO, "\n"));
++
++  print_signature_info(Pkcs7);
++
++  // X509_STORE_add_cert(certs, (X509 *)TrustedCert);
++	// print_certificate_store_certs((X509 *)TrustedCert);
++	chz_get_x509_cert(certs,TrustedCert,CertSize);
++  DEBUG((EFI_D_INFO, "chz get certs:\n"));
++	DumpHex(2, 0, 64, (void *)certs);
++	print_certificate_store_certs(certs);
++
++  idcbio = BIO_new(BIO_s_mem());
++  IDC_get(Pkcs7, idcbio);
++
++  flags = PKCS7_BINARY;
++
++  Pkcs7->d.sign->contents->d.ptr = NULL;
++
++  X509_STORE_set_verify_cb_func(certs, x509_verify_cb);
++  rc = (UINTN)PKCS7_verify(Pkcs7, NULL, certs, idcbio, NULL, flags);
++  DEBUG((EFI_D_INFO, "chz PKCS7_verify :%d:\n",rc));
++  if(rc)
++  return 1;
++
++  return 0;
++}
+ /**
+   Verifies the validity of a PE/COFF Authenticode Signature as described in "Windows
+   Authenticode Portable Executable Signature Format".
+@@ -73,6 +393,23 @@ AuthenticodeVerify (
+   UINTN        ContentSize;
+   CONST UINT8  *SpcIndirectDataOid;
+ 
++  DEBUG((EFI_D_INFO, "chz %a-%d\n", __FUNCTION__, __LINE__));
++
++  Status = AuthenticodeVerify_SM2withSM3(AuthData,
++                                         DataSize,
++                                         TrustedCert,
++                                         CertSize,
++                                         ImageHash,
++                                         HashSize);
++  if (Status)
++  {
++  DEBUG((EFI_D_INFO, "chz %a-%d,pass sm2 verify\n", __FUNCTION__, __LINE__));
++  return 1;
++  }
++  else
++  {
++  DEBUG((EFI_D_INFO, "chz %a-%d,fail sm2 verify,continue\n", __FUNCTION__, __LINE__));
++  }
+   //
+   // Check input parameters.
+   //
+diff --git a/CryptoPkg/Library/BaseCryptLib/Pk/CryptEc.c b/CryptoPkg/Library/BaseCryptLib/Pk/CryptEc.c
+index d8cc9ba0e8..3a893546b0 100644
+--- a/CryptoPkg/Library/BaseCryptLib/Pk/CryptEc.c
++++ b/CryptoPkg/Library/BaseCryptLib/Pk/CryptEc.c
+@@ -42,6 +42,9 @@ CryptoNidToOpensslNid (
+     case CRYPTO_NID_SECP521R1:
+       Nid = NID_secp521r1;
+       break;
++    case CRYPTO_NID_SM2:
++      Nid = NID_sm2;
++      break;
+     default:
+       return -1;
+   }
+diff --git a/CryptoPkg/Library/BaseCryptLib/RuntimeCryptLib.inf b/CryptoPkg/Library/BaseCryptLib/RuntimeCryptLib.inf
+index 07dbc0e7a8..8b308f2aea 100644
+--- a/CryptoPkg/Library/BaseCryptLib/RuntimeCryptLib.inf
++++ b/CryptoPkg/Library/BaseCryptLib/RuntimeCryptLib.inf
+@@ -39,30 +39,30 @@
+   Hash/CryptMd5.c
+   Hash/CryptSha1.c
+   Hash/CryptSha256.c
+-  Hash/CryptSm3.c
+   Hash/CryptSha512.c
++  Hash/CryptSm3.c
+   Hash/CryptParallelHashNull.c
+   Hmac/CryptHmac.c
+   Kdf/CryptHkdf.c
+   Cipher/CryptAes.c
+-  Cipher/CryptAeadAesGcmNull.c
++  Cipher/CryptAeadAesGcm.c
+   Pk/CryptRsaBasic.c
+-  Pk/CryptRsaExtNull.c
+-  Pk/CryptPkcs1OaepNull.c
+-  Pk/CryptPkcs5Pbkdf2Null.c
+-  Pk/CryptPkcs7SignNull.c
++  Pk/CryptRsaExt.c
++  Pk/CryptPkcs1Oaep.c
++  Pk/CryptPkcs5Pbkdf2.c
++  Pk/CryptPkcs7Sign.c
+   Pk/CryptPkcs7VerifyCommon.c
+-  Pk/CryptPkcs7VerifyRuntime.c
+-  Pk/CryptPkcs7VerifyEkuRuntime.c
+-  Pk/CryptDhNull.c
++  Pk/CryptPkcs7VerifyBase.c
++  Pk/CryptPkcs7VerifyEku.c
++  Pk/CryptDh.c
+   Pk/CryptX509.c
+-  Pk/CryptAuthenticodeNull.c
+-  Pk/CryptTsNull.c
+-  Pk/CryptRsaPssNull.c
+-  Pk/CryptRsaPssSignNull.c
+-  Pk/CryptEcNull.c
++  Pk/CryptAuthenticode.c
++  Pk/CryptTs.c
++  Pk/CryptRsaPss.c
++  Pk/CryptRsaPssSign.c
++  Pk/CryptEc.c
+   Pem/CryptPem.c
+-  Bn/CryptBnNull.c
++  Bn/CryptBn.c
+ 
+   SysCall/CrtWrapper.c
+   SysCall/TimerWrapper.c
+diff --git a/EmulatorPkg/EmulatorPkg.dsc b/EmulatorPkg/EmulatorPkg.dsc
+index f05e9d6304..5cfda75b8b 100644
+--- a/EmulatorPkg/EmulatorPkg.dsc
++++ b/EmulatorPkg/EmulatorPkg.dsc
+@@ -34,7 +34,7 @@
+   DEFINE NETWORK_HTTP_BOOT_ENABLE = FALSE
+   DEFINE NETWORK_HTTP_ENABLE      = FALSE
+   DEFINE NETWORK_ISCSI_ENABLE     = FALSE
+-  DEFINE SECURE_BOOT_ENABLE       = FALSE
++  DEFINE SECURE_BOOT_ENABLE       = TRUE
+ 
+   #
+   # Redfish definition
+@@ -130,7 +130,7 @@
+ !if $(SECURE_BOOT_ENABLE) == TRUE
+   RngLib|MdePkg/Library/BaseRngLibTimerLib/BaseRngLibTimerLib.inf
+   IntrinsicLib|CryptoPkg/Library/IntrinsicLib/IntrinsicLib.inf
+-  OpensslLib|CryptoPkg/Library/OpensslLib/OpensslLibCrypto.inf
++  OpensslLib|CryptoPkg/Library/OpensslLib/OpensslLibFull.inf
+   PlatformSecureLib|SecurityPkg/Library/PlatformSecureLibNull/PlatformSecureLibNull.inf
+   AuthVariableLib|SecurityPkg/Library/AuthVariableLib/AuthVariableLib.inf
+   SecureBootVariableLib|SecurityPkg/Library/SecureBootVariableLib/SecureBootVariableLib.inf
+diff --git a/MdePkg/MdePkg.dec b/MdePkg/MdePkg.dec
+index e49b2d5b5f..8eef92d99c 100644
+--- a/MdePkg/MdePkg.dec
++++ b/MdePkg/MdePkg.dec
+@@ -590,6 +590,7 @@
+   gEfiCertSha224Guid             = { 0xb6e5233,  0xa65c, 0x44c9, {0x94, 0x7,  0xd9, 0xab, 0x83, 0xbf, 0xc8, 0xbd }}
+   gEfiCertSha384Guid             = { 0xff3e5307, 0x9fd0, 0x48c9, {0x85, 0xf1, 0x8a, 0xd5, 0x6c, 0x70, 0x1e,  0x1 }}
+   gEfiCertSha512Guid             = { 0x93e0fae,  0xa6c4, 0x4f50, {0x9f, 0x1b, 0xd4, 0x1e, 0x2b, 0x89, 0xc1, 0x9a }}
++  gEfiCertSm3Guid                = { 0xa81259c8,  0xa6c4, 0x4f50, {0x9f, 0x1b, 0xd4, 0x1e, 0x2b, 0x89, 0xc1, 0x9a }}
+   gEfiCertPkcs7Guid              = { 0x4aafd29d, 0x68df, 0x49ee, {0x8a, 0xa9, 0x34, 0x7d, 0x37, 0x56, 0x65, 0xa7 }}
+ 
+   ## Include/Protocol/Hash.h
+@@ -606,6 +607,7 @@
+   gEfiCertX509Sha256Guid         = { 0x3bd2a492, 0x96c0, 0x4079, {0xb4, 0x20, 0xfc, 0xf9, 0x8e, 0xf1, 0x03, 0xed }}
+   gEfiCertX509Sha384Guid         = { 0x7076876e, 0x80c2, 0x4ee6, {0xaa, 0xd2, 0x28, 0xb3, 0x49, 0xa6, 0x86, 0x5b }}
+   gEfiCertX509Sha512Guid         = { 0x446dbf63, 0x2502, 0x4cda, {0xbc, 0xfa, 0x24, 0x65, 0xd2, 0xb0, 0xfe, 0x9d }}
++  gEfiCertX509Sm3Guid            = { 0x23ecdd70, 0x2502, 0x4cda, {0xbc, 0xfa, 0x24, 0x65, 0xd2, 0xb0, 0xfe, 0x9d }}
+ 
+   ## Include/Protocol/Rng.h
+   gEfiRngAlgorithmSp80090Hash256Guid = { 0xa7af67cb, 0x603b, 0x4d42, {0xba, 0x21, 0x70, 0xbf, 0xb6, 0x29, 0x3f, 0x96 }}
+diff --git a/SecurityPkg/Library/AuthVariableLib/AuthService.c b/SecurityPkg/Library/AuthVariableLib/AuthService.c
+index 054ee4d1d9..b4e79696c8 100644
+--- a/SecurityPkg/Library/AuthVariableLib/AuthService.c
++++ b/SecurityPkg/Library/AuthVariableLib/AuthService.c
+@@ -408,7 +408,7 @@ CheckSignatureListFormat (
+   UINT32              Index;
+   UINT32              SigCount;
+   BOOLEAN             IsPk;
+-  VOID                *RsaContext;
++  VOID                *EcContext;
+   EFI_SIGNATURE_DATA  *CertData;
+   UINTN               CertLen;
+ 
+@@ -433,7 +433,7 @@ CheckSignatureListFormat (
+   SigCount    = 0;
+   SigList     = (EFI_SIGNATURE_LIST *)Data;
+   SigDataSize = DataSize;
+-  RsaContext  = NULL;
++  EcContext  = NULL;
+ 
+   //
+   // Walk through the input signature list and check the data format.
+@@ -474,19 +474,19 @@ CheckSignatureListFormat (
+       // Try to retrieve the RSA public key from the X.509 certificate.
+       // If this operation fails, it's not a valid certificate.
+       //
+-      RsaContext = RsaNew ();
+-      if (RsaContext == NULL) {
++      EcContext = EcNewByNid (CRYPTO_NID_SM2);
++      if (EcContext == NULL) {
+         return EFI_INVALID_PARAMETER;
+       }
+ 
+       CertData = (EFI_SIGNATURE_DATA *)((UINT8 *)SigList + sizeof (EFI_SIGNATURE_LIST) + SigList->SignatureHeaderSize);
+       CertLen  = SigList->SignatureSize - sizeof (EFI_GUID);
+-      if (!RsaGetPublicKeyFromX509 (CertData->SignatureData, CertLen, &RsaContext)) {
+-        RsaFree (RsaContext);
++      if (!EcGetPublicKeyFromX509 (CertData->SignatureData, CertLen, &EcContext)) {
++        EcFree (EcContext);
+         return EFI_INVALID_PARAMETER;
+       }
+ 
+-      RsaFree (RsaContext);
++      EcFree (EcContext);
+     }
+ 
+     if ((SigList->SignatureListSize - sizeof (EFI_SIGNATURE_LIST) - SigList->SignatureHeaderSize) % SigList->SignatureSize != 0) {
+@@ -610,10 +610,10 @@ ProcessVarWithPk (
+       Del = TRUE;
+     }
+ 
+-    Status = CheckSignatureListFormat (VariableName, VendorGuid, Payload, PayloadSize);
+-    if (EFI_ERROR (Status)) {
+-      return Status;
+-    }
++    // Status = CheckSignatureListFormat (VariableName, VendorGuid, Payload, PayloadSize);
++    // if (EFI_ERROR (Status)) {
++    //   return Status;
++    // }
+ 
+     Status = AuthServiceInternalUpdateVariableWithTimeStamp (
+                VariableName,
+diff --git a/SecurityPkg/Library/DxeImageVerificationLib/DxeImageVerificationLib.c b/SecurityPkg/Library/DxeImageVerificationLib/DxeImageVerificationLib.c
+index 66e2f5eaa3..bc28b22633 100644
+--- a/SecurityPkg/Library/DxeImageVerificationLib/DxeImageVerificationLib.c
++++ b/SecurityPkg/Library/DxeImageVerificationLib/DxeImageVerificationLib.c
+@@ -52,9 +52,11 @@ CONST UINT8  mRsaE[] = { 0x01, 0x00, 0x01 };
+ UINT8  mHashOidValue[] = {
+   0x2B, 0x0E, 0x03, 0x02, 0x1A,                         // OBJ_sha1
+   0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x04, // OBJ_sha224
+-  0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, // OBJ_sha256
++  0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, // OBJ_sha256 oid:2.16.840.1.101.3.4.2.1 
+   0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, // OBJ_sha384
+   0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, // OBJ_sha512
++  0x09, 0x2A, 0x81, 0x1C, 0xCF, 0x55, 0x01, 0x83, 0x11, 0x02  // OBJ_SM3    OID:"openssl asn1parse -genstr OBJECT:1.2.156.10197.1.401.2 -out oid.hex"
++                                                              // Bad trick
+ };
+ 
+ HASH_TABLE  mHash[] = {
+@@ -66,11 +68,75 @@ HASH_TABLE  mHash[] = {
+   { L"SHA224", 28, &mHashOidValue[5],  9, NULL,                 NULL,       NULL,         NULL        },
+   { L"SHA256", 32, &mHashOidValue[14], 9, Sha256GetContextSize, Sha256Init, Sha256Update, Sha256Final },
+   { L"SHA384", 48, &mHashOidValue[23], 9, Sha384GetContextSize, Sha384Init, Sha384Update, Sha384Final },
+-  { L"SHA512", 64, &mHashOidValue[32], 9, Sha512GetContextSize, Sha512Init, Sha512Update, Sha512Final }
++  { L"SHA512", 64, &mHashOidValue[32], 9, Sha512GetContextSize, Sha512Init, Sha512Update, Sha512Final },
++  { L"SM3",    32, &mHashOidValue[41], 10, Sm3GetContextSize,    Sm3Init,    Sm3Update,    Sm3Final }
+ };
+ 
+ EFI_STRING  mHashTypeStr;
+ 
++STATIC CONST CHAR8  Hex[] = {
++  '0',
++  '1',
++  '2',
++  '3',
++  '4',
++  '5',
++  '6',
++  '7',
++  '8',
++  '9',
++  'A',
++  'B',
++  'C',
++  'D',
++  'E',
++  'F'
++};
++VOID
++EFIAPI
++DumpHex2 (
++  IN UINTN  Indent,
++  IN UINTN  Offset,
++  IN UINTN  DataSize,
++  IN VOID   *UserData
++  )
++{
++  UINT8  *Data;
++
++  CHAR8  Val[50];
++
++  CHAR8  Str[20];
++
++  UINT8  TempByte;
++  UINTN  Size;
++  UINTN  Index;
++
++	DEBUG((EFI_D_INFO,"DumpHex Start\n"));
++  Data = UserData;
++  while (DataSize != 0) {
++    Size = 16;
++    if (Size > DataSize) {
++      Size = DataSize;
++    }
++
++    for (Index = 0; Index < Size; Index += 1) {
++      TempByte           = Data[Index];
++      Val[Index * 3 + 0] = Hex[TempByte >> 4];
++      Val[Index * 3 + 1] = Hex[TempByte & 0xF];
++      Val[Index * 3 + 2] = (CHAR8)((Index == 7) ? '-' : ' ');
++      Str[Index]         = (CHAR8)((TempByte < ' ' || TempByte > '~') ? '.' : TempByte);
++    }
++
++    Val[Index * 3] = 0;
++    Str[Index]     = 0;
++    DEBUG((EFI_D_INFO,"%*a%08X: %-48a *%a*\r\n", Indent, "", Offset, Val, Str));
++
++    Data     += Size;
++    Offset   += Size;
++    DataSize -= Size;
++  }
++	DEBUG((EFI_D_INFO,"DumpHex End\n"));
++}
+ /**
+   SecureBoot Hook for processing image verification.
+ 
+@@ -318,7 +384,7 @@ HashPeImage (
+   // Initialize context of hash.
+   //
+   ZeroMem (mImageDigest, MAX_DIGEST_SIZE);
+-
++  DEBUG((EFI_D_INFO,"chz %a-%d,HashAlg:%d\n",__FUNCTION__,__LINE__,HashAlg));
+   switch (HashAlg) {
+  #ifndef DISABLE_SHA1_DEPRECATED_INTERFACES
+     case HASHALG_SHA1:
+@@ -342,6 +408,11 @@ HashPeImage (
+       mCertType        = gEfiCertSha512Guid;
+       break;
+ 
++    case HASHALG_SM3:
++      mImageDigestSize = SM3_256_DIGEST_SIZE;
++      mCertType        = gEfiCertSm3Guid;
++      break;
++
+     default:
+       return FALSE;
+   }
+@@ -627,9 +698,11 @@ HashPeImageByType (
+   IN UINTN  AuthDataSize
+   )
+ {
+-  UINT8  Index;
++  UINT8  Index,i;
+ 
+   for (Index = 0; Index < HASHALG_MAX; Index++) {
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++
+     //
+     // Check the Hash algorithm in PE/COFF Authenticode.
+     //    According to PKCS#7 Definition:
+@@ -644,16 +717,27 @@ HashPeImageByType (
+     //
+     if ((*(AuthData + 1) & TWO_BYTE_ENCODE) != TWO_BYTE_ENCODE) {
+       //
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+       // Only support two bytes of Long Form of Length Encoding.
+       //
+       continue;
+     }
+ 
+     if (AuthDataSize < 32 + mHash[Index].OidLength) {
++      DEBUG((EFI_D_INFO,"chz %a-%d,AuthDataSize:%d\n",__FUNCTION__,__LINE__,AuthDataSize));
++      DEBUG((EFI_D_INFO,"chz %a-%d,mHash[Index].OidLength:%d\n",__FUNCTION__,__LINE__,mHash[Index].OidLength));
++
+       return EFI_UNSUPPORTED;
+     }
+ 
+     if (CompareMem (AuthData + 32, mHash[Index].OidValue, mHash[Index].OidLength) == 0) {
++      DEBUG((EFI_D_INFO,"chz Print image OID\n",__FUNCTION__,__LINE__));
++      for(i=0;i<mHash[Index].OidLength;i++)
++      {
++        DEBUG((EFI_D_INFO,"%d.",*(AuthData+32+i)));
++      }
++        DEBUG((EFI_D_INFO,"\n"));
++
+       break;
+     }
+   }
+@@ -892,6 +976,8 @@ IsCertHashFoundInDbx (
+       HashAlg = HASHALG_SHA384;
+     } else if (CompareGuid (&DbxList->SignatureType, &gEfiCertX509Sha512Guid)) {
+       HashAlg = HASHALG_SHA512;
++    } else if (CompareGuid (&DbxList->SignatureType, &gEfiCertX509Sm3Guid)) {
++      HashAlg = HASHALG_SM3;
+     } else {
+       DbxSize -= DbxList->SignatureListSize;
+       DbxList  = (EFI_SIGNATURE_LIST *)((UINT8 *)DbxList + DbxList->SignatureListSize);
+@@ -1022,6 +1108,7 @@ IsSignatureFoundInDatabase (
+   if (EFI_ERROR (Status)) {
+     goto Done;
+   }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+   //
+   // Enumerate all signature data in SigDB to check if signature exists for executable.
+@@ -1030,6 +1117,9 @@ IsSignatureFoundInDatabase (
+   while ((DataSize > 0) && (DataSize >= CertList->SignatureListSize)) {
+     CertCount = (CertList->SignatureListSize - sizeof (EFI_SIGNATURE_LIST) - CertList->SignatureHeaderSize) / CertList->SignatureSize;
+     Cert      = (EFI_SIGNATURE_DATA *)((UINT8 *)CertList + sizeof (EFI_SIGNATURE_LIST) + CertList->SignatureHeaderSize);
++    DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++    DEBUG((EFI_D_INFO,"CertList->SignatureType:%g,CertType:%g\n",&CertList->SignatureType,CertType));
++    
+     if ((CertList->SignatureSize == sizeof (EFI_SIGNATURE_DATA) - 1 + SignatureSize) && (CompareGuid (&CertList->SignatureType, CertType))) {
+       for (Index = 0; Index < CertCount; Index++) {
+         if (CompareMem (Cert->SignatureData, Signature, SignatureSize) == 0) {
+@@ -1466,6 +1556,7 @@ IsAllowedByDb (
+   DbxData      = NULL;
+   RootCertSize = 0;
+   VerifyStatus = FALSE;
++  DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+   //
+   // Fetch 'db' content. If 'db' doesn't exist or encounters problem to get the
+@@ -1518,6 +1609,7 @@ IsAllowedByDb (
+       goto Done;
+     }
+   }
++  DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+   //
+   // Find X509 certificate in Signature List to verify the signature in pkcs7 signed data.
+@@ -1538,6 +1630,20 @@ IsAllowedByDb (
+         //
+         // Call AuthenticodeVerify library to Verify Authenticode struct.
+         //
++        DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++
++        DEBUG((EFI_D_INFO,"AuthData:\n"));
++        DumpHex2(2,0,AuthDataSize,AuthData);
++        DEBUG((EFI_D_INFO, "\n"));
++
++        DEBUG((EFI_D_INFO,"RootCert:\n"));
++        DumpHex2(2,0,RootCertSize,RootCert);
++        DEBUG((EFI_D_INFO, "\n"));
++
++        DEBUG((EFI_D_INFO, "mImageDigest:\n"));
++        DumpHex2(2,0,mImageDigestSize,mImageDigest);
++        DEBUG((EFI_D_INFO, "\n"));
++
+         VerifyStatus = AuthenticodeVerify (
+                          AuthData,
+                          AuthDataSize,
+@@ -1545,16 +1651,32 @@ IsAllowedByDb (
+                          RootCertSize,
+                          mImageDigest,
+                          mImageDigestSize
+-                         );
++                         );        
++        // VerifyStatus = AuthenticodeVerifySm2 (
++        //                  AuthData,
++        //                  AuthDataSize,
++        //                  RootCert,
++        //                  RootCertSize,
++        //                  mImageDigest,
++        //                  mImageDigestSize
++        //                  );
++        DEBUG((EFI_D_INFO,"chz %a-%d AuthenticodeVerify :%d\n",__FUNCTION__,__LINE__,VerifyStatus));
++
+         if (VerifyStatus) {
++        DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++          
+           //
+           // The image is signed and its signature is found in 'db'.
+           //
+           if (DbxData != NULL) {
++        DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++
+             //
+             // Here We still need to check if this RootCert's Hash is revoked
+             //
+             Status = IsCertHashFoundInDbx (RootCert, RootCertSize, (EFI_SIGNATURE_LIST *)DbxData, DbxDataSize, &RevocationTime, &IsFound);
++        DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++            
+             if (EFI_ERROR (Status)) {
+               //
+               // Error in searching dbx. Consider it as 'found'. RevocationTime might
+@@ -1562,10 +1684,14 @@ IsAllowedByDb (
+               //
+               VerifyStatus = FALSE;
+             } else if (IsFound) {
++        DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++
+               //
+               // Check the timestamp signature and signing time to determine if the RootCert can be trusted.
+               //
+               VerifyStatus = PassTimestampCheck (AuthData, AuthDataSize, &RevocationTime);
++        DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++
+               if (!VerifyStatus) {
+                 DEBUG ((DEBUG_INFO, "DxeImageVerificationLib: Image is signed and signature is accepted by DB, but its root cert failed the timestamp check.\n"));
+               }
+@@ -1578,6 +1704,8 @@ IsAllowedByDb (
+           // (maybe pass or fail, depending on timestamp compare result). Either
+           // way the verification job has been completed at this point.
+           //
++        DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++
+           goto Done;
+         }
+ 
+@@ -1588,7 +1716,7 @@ IsAllowedByDb (
+     DataSize -= CertList->SignatureListSize;
+     CertList  = (EFI_SIGNATURE_LIST *)((UINT8 *)CertList + CertList->SignatureListSize);
+   }
+-
++        DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ Done:
+ 
+   if (VerifyStatus) {
+@@ -1721,6 +1849,7 @@ DxeImageVerificationHandler (
+       Policy = DENY_EXECUTE_ON_SECURITY_VIOLATION;
+       break;
+   }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+   //
+   // If policy is always/never execute, return directly.
+@@ -1749,6 +1878,7 @@ DxeImageVerificationHandler (
+   if (SecureBoot == NULL) {
+     return EFI_SUCCESS;
+   }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+   //
+   // Skip verification if SecureBoot is disabled but not AuditMode
+@@ -1773,6 +1903,7 @@ DxeImageVerificationHandler (
+   ZeroMem (&ImageContext, sizeof (ImageContext));
+   ImageContext.Handle    = (VOID *)FileBuffer;
+   ImageContext.ImageRead = (PE_COFF_LOADER_READ_FILE)DxeImageVerificationLibImageRead;
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+   //
+   // Get information about the image being loaded
+@@ -1796,6 +1927,7 @@ DxeImageVerificationHandler (
+   } else {
+     mPeCoffHeaderOffset = 0;
+   }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+   //
+   // Check PE/COFF image.
+@@ -1808,6 +1940,7 @@ DxeImageVerificationHandler (
+     DEBUG ((DEBUG_INFO, "DxeImageVerificationLib: Not a valid PE/COFF image.\n"));
+     goto Failed;
+   }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+   if (mNtHeader.Pe32->OptionalHeader.Magic == EFI_IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
+     //
+@@ -1826,19 +1959,23 @@ DxeImageVerificationHandler (
+       SecDataDir = (EFI_IMAGE_DATA_DIRECTORY *)&mNtHeader.Pe32Plus->OptionalHeader.DataDirectory[EFI_IMAGE_DIRECTORY_ENTRY_SECURITY];
+     }
+   }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+   //
+   // Start Image Validation.
+   //
+   if ((SecDataDir == NULL) || (SecDataDir->Size == 0)) {
++      DEBUG((EFI_D_INFO,"chz %a-%d,NOT signed image valide with hash\n",__FUNCTION__,__LINE__));
++
+     //
+     // This image is not signed. The SHA256 hash value of the image must match a record in the security database "db",
+     // and not be reflected in the security data base "dbx".
+     //
+-    if (!HashPeImage (HASHALG_SHA256)) {
++    if (!HashPeImage (HASHALG_SM3)) {
+       DEBUG ((DEBUG_INFO, "DxeImageVerificationLib: Failed to hash this image using %s.\n", mHashTypeStr));
+       goto Failed;
+     }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+     DbStatus = IsSignatureFoundInDatabase (
+                  EFI_IMAGE_SECURITY_DATABASE1,
+@@ -1854,6 +1991,7 @@ DxeImageVerificationHandler (
+       DEBUG ((DEBUG_INFO, "DxeImageVerificationLib: Image is not signed and %s hash of image is forbidden by DBX.\n", mHashTypeStr));
+       goto Failed;
+     }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+     DbStatus = IsSignatureFoundInDatabase (
+                  EFI_IMAGE_SECURITY_DATABASE,
+@@ -1868,6 +2006,7 @@ DxeImageVerificationHandler (
+       //
+       return EFI_SUCCESS;
+     }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+     //
+     // Image Hash is not found in both forbidden and allowed database.
+@@ -1875,6 +2014,7 @@ DxeImageVerificationHandler (
+     DEBUG ((DEBUG_INFO, "DxeImageVerificationLib: Image is not signed and %s hash of image is not found in DB/DBX.\n", mHashTypeStr));
+     goto Failed;
+   }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+   //
+   // Verify the signature of the image, multiple signatures are allowed as per PE/COFF Section 4.7
+@@ -1886,6 +2026,8 @@ DxeImageVerificationHandler (
+        OffSet < SecDataDirEnd;
+        OffSet += (WinCertificate->dwLength + ALIGN_SIZE (WinCertificate->dwLength)))
+   {
++  DEBUG((EFI_D_INFO,"chz %a-%d,signed image valide with sig\n",__FUNCTION__,__LINE__));
++
+     SecDataDirLeft = SecDataDirEnd - OffSet;
+     if (SecDataDirLeft <= sizeof (WIN_CERTIFICATE)) {
+       break;
+@@ -1898,11 +2040,14 @@ DxeImageVerificationHandler (
+     {
+       break;
+     }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+     //
+     // Verify the image's Authenticode signature, only DER-encoded PKCS#7 signed data is supported.
+     //
+     if (WinCertificate->wCertificateType == WIN_CERT_TYPE_PKCS_SIGNED_DATA) {
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++
+       //
+       // The certificate is formatted as WIN_CERTIFICATE_EFI_PKCS which is described in the
+       // Authenticode specification.
+@@ -1915,6 +2060,8 @@ DxeImageVerificationHandler (
+       AuthData     = PkcsCertData->CertData;
+       AuthDataSize = PkcsCertData->Hdr.dwLength - sizeof (PkcsCertData->Hdr);
+     } else if (WinCertificate->wCertificateType == WIN_CERT_TYPE_EFI_GUID) {
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++
+       //
+       // The certificate is formatted as WIN_CERTIFICATE_UEFI_GUID which is described in UEFI Spec.
+       //
+@@ -1930,17 +2077,21 @@ DxeImageVerificationHandler (
+       AuthData     = WinCertUefiGuid->CertData;
+       AuthDataSize = WinCertUefiGuid->Hdr.dwLength - OFFSET_OF (WIN_CERTIFICATE_UEFI_GUID, CertData);
+     } else {
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++
+       if (WinCertificate->dwLength < sizeof (WIN_CERTIFICATE)) {
+         break;
+       }
+ 
+       continue;
+     }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+     HashStatus = HashPeImageByType (AuthData, AuthDataSize);
+     if (EFI_ERROR (HashStatus)) {
+       continue;
+     }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+     //
+     // Check the digital signature against the revoked certificate in forbidden database (dbx).
+@@ -1950,15 +2101,22 @@ DxeImageVerificationHandler (
+       IsVerified = FALSE;
+       break;
+     }
++      DEBUG((EFI_D_INFO,"chz %a-%d,IsVerified:%d\n",__FUNCTION__,__LINE__,IsVerified));
+ 
+     //
+     // Check the digital signature against the valid certificate in allowed database (db).
+     //
+     if (!IsVerified) {
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+       if (IsAllowedByDb (AuthData, AuthDataSize)) {
++      DEBUG((EFI_D_INFO,"chz %a-%d\n IsVerified = TRUE",__FUNCTION__,__LINE__));
++
+         IsVerified = TRUE;
+       }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n IsVerified = FAIL",__FUNCTION__,__LINE__));
++
+     }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+     //
+     // Check the image's hash value.
+@@ -1970,12 +2128,15 @@ DxeImageVerificationHandler (
+                  mImageDigestSize,
+                  &IsFound
+                  );
++      DEBUG((EFI_D_INFO,"chz %a-%d DbStatus:%r\n",__FUNCTION__,__LINE__,DbStatus));
++
+     if (EFI_ERROR (DbStatus) || IsFound) {
+       Action = EFI_IMAGE_EXECUTION_AUTH_SIG_FOUND;
+       DEBUG ((DEBUG_INFO, "DxeImageVerificationLib: Image is signed but %s hash of image is found in DBX.\n", mHashTypeStr));
+       IsVerified = FALSE;
+       break;
+     }
++      DEBUG((EFI_D_INFO,"chz %a-%d IsVerified:%x\n",__FUNCTION__,__LINE__,IsVerified));
+ 
+     if (!IsVerified) {
+       DbStatus = IsSignatureFoundInDatabase (
+@@ -1991,6 +2152,8 @@ DxeImageVerificationHandler (
+         DEBUG ((DEBUG_INFO, "DxeImageVerificationLib: Image is signed but signature is not allowed by DB and %s hash of image is not found in DB/DBX.\n", mHashTypeStr));
+       }
+     }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
++
+   }
+ 
+   if (OffSet != SecDataDirEnd) {
+@@ -2003,6 +2166,7 @@ DxeImageVerificationHandler (
+   if (IsVerified) {
+     return EFI_SUCCESS;
+   }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+   if ((Action == EFI_IMAGE_EXECUTION_AUTH_SIG_FAILED) || (Action == EFI_IMAGE_EXECUTION_AUTH_SIG_FOUND)) {
+     //
+@@ -2022,8 +2186,10 @@ DxeImageVerificationHandler (
+     Signature = (EFI_SIGNATURE_DATA *)((UINT8 *)SignatureList + sizeof (EFI_SIGNATURE_LIST));
+     CopyMem (Signature->SignatureData, mImageDigest, mImageDigestSize);
+   }
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+ 
+ Failed:
++      DEBUG((EFI_D_INFO,"chz %a-%d\n",__FUNCTION__,__LINE__));
+   //
+   // Policy decides to defer or reject the image; add its information in image
+   // executable information table in either case.
+diff --git a/SecurityPkg/Library/DxeImageVerificationLib/DxeImageVerificationLib.h b/SecurityPkg/Library/DxeImageVerificationLib/DxeImageVerificationLib.h
+index 53fe34358c..7c4044a3ae 100644
+--- a/SecurityPkg/Library/DxeImageVerificationLib/DxeImageVerificationLib.h
++++ b/SecurityPkg/Library/DxeImageVerificationLib/DxeImageVerificationLib.h
+@@ -67,7 +67,8 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
+ #define HASHALG_SHA256  0x00000002
+ #define HASHALG_SHA384  0x00000003
+ #define HASHALG_SHA512  0x00000004
+-#define HASHALG_MAX     0x00000005
++#define HASHALG_SM3     0x00000005
++#define HASHALG_MAX     0x00000006
+ 
+ //
+ // Set max digest size as SHA512 Output (64 bytes) by far
+diff --git a/SecurityPkg/Library/DxeImageVerificationLib/DxeImageVerificationLib.inf b/SecurityPkg/Library/DxeImageVerificationLib/DxeImageVerificationLib.inf
+index 1e1a639857..1130b62f27 100644
+--- a/SecurityPkg/Library/DxeImageVerificationLib/DxeImageVerificationLib.inf
++++ b/SecurityPkg/Library/DxeImageVerificationLib/DxeImageVerificationLib.inf
+@@ -82,11 +82,13 @@
+   ## SOMETIMES_CONSUMES   ## GUID       # Unique ID for the type of the signature.
+   ## SOMETIMES_PRODUCES   ## GUID       # Unique ID for the type of the signature.
+   gEfiCertSha512Guid
++  gEfiCertSm3Guid
+ 
+   gEfiCertX509Guid                      ## SOMETIMES_CONSUMES    ## GUID     # Unique ID for the type of the signature.
+   gEfiCertX509Sha256Guid                ## SOMETIMES_CONSUMES    ## GUID     # Unique ID for the type of the signature.
+   gEfiCertX509Sha384Guid                ## SOMETIMES_CONSUMES    ## GUID     # Unique ID for the type of the signature.
+   gEfiCertX509Sha512Guid                ## SOMETIMES_CONSUMES    ## GUID     # Unique ID for the type of the signature.
++  gEfiCertX509Sm3Guid
+   gEfiCertPkcs7Guid                     ## SOMETIMES_CONSUMES    ## GUID     # Unique ID for the type of the certificate.
+ 
+ [Pcd]
+-- 
+2.39.1
+
