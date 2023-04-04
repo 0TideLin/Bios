@@ -1,0 +1,35 @@
+[Defines]
+  INF_VERSION           = 0x00010005
+  BASE_NAME             = HiiDatabaseApp
+  FILE_GUID             = 07057bec-caef-44bf-aa38-d6e7f1cbd8d3
+  MODULE_TYPE           = UEFI_APPLICATION
+  VERSION_STRING        = 1.0
+  ENTRY_POINT           = HiiDatabaseRun
+
+[Sources]
+  HiiDatabase.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  ShellPkg/ShellPkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+
+
+[LibraryClasses]
+  MemoryAllocationLib
+  BaseLib
+  UefiLib
+  UefiBootServicesTableLib
+  UefiApplicationEntryPoint
+  BaseMemoryLib
+  DebugLib
+  ReportStatusCodeLib
+  ShellLib
+  DxeServicesLib
+
+[Guids]
+  gEfiFileSystemVolumeLabelInfoIdGuid
+
+[Protocols]
+  gEfiHiiPackageListProtocolGuid
+  gEfiHiiImageExProtocolGuid

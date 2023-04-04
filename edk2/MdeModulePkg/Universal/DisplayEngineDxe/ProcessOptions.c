@@ -862,50 +862,50 @@ PasswordProcess (
     return Status;
   }
 
-  //
-  // Confirm new password
-  //
-  TempString = AllocateZeroPool ((Maximum + 1) * sizeof (CHAR16));
-  ASSERT (TempString);
-  Status = ReadString (MenuOption, gConfirmPassword, TempString);
-  if (EFI_ERROR (Status)) {
-    //
-    // Reset state machine for password
-    //
-    Question->PasswordCheck (gFormData, Question, NULL);
-    ZeroMem (StringPtr, (Maximum + 1) * sizeof (CHAR16));
-    ZeroMem (TempString, (Maximum + 1) * sizeof (CHAR16));
-    FreePool (StringPtr);
-    FreePool (TempString);
-    return Status;
-  }
+  // //
+  // // Confirm new password
+  // //
+  // TempString = AllocateZeroPool ((Maximum + 1) * sizeof (CHAR16));
+  // ASSERT (TempString);
+  // Status = ReadString (MenuOption, gConfirmPassword, TempString);
+  // if (EFI_ERROR (Status)) {
+  //   //
+  //   // Reset state machine for password
+  //   //
+  //   Question->PasswordCheck (gFormData, Question, NULL);
+  //   ZeroMem (StringPtr, (Maximum + 1) * sizeof (CHAR16));
+  //   ZeroMem (TempString, (Maximum + 1) * sizeof (CHAR16));
+  //   FreePool (StringPtr);
+  //   FreePool (TempString);
+  //   return Status;
+  // }
 
   //
   // Compare two typed-in new passwords
   //
-  if (StrCmp (StringPtr, TempString) == 0) {
+  // if (StrCmp (StringPtr, TempString) == 0) {
     gUserInput->InputValue.Buffer = AllocateCopyPool (Question->CurrentValue.BufferLen, StringPtr);
     gUserInput->InputValue.BufferLen = Question->CurrentValue.BufferLen;
     gUserInput->InputValue.Type = Question->CurrentValue.Type;
     gUserInput->InputValue.Value.string = HiiSetString(gFormData->HiiHandle, gUserInput->InputValue.Value.string, StringPtr, NULL);
 
     Status = EFI_SUCCESS;
-  } else {
-    //
-    // Reset state machine for password
-    //
-    Question->PasswordCheck (gFormData, Question, NULL);
+  // } else {
+  //   //
+  //   // Reset state machine for password
+  //   //
+  //   Question->PasswordCheck (gFormData, Question, NULL);
 
-    //
-    // Two password mismatch, prompt error message
-    //
-    do {
-      CreateDialog (&Key, gEmptyString, gConfirmError, gPressEnter, gEmptyString, NULL);
-    } while (Key.UnicodeChar != CHAR_CARRIAGE_RETURN);
+  //   //
+  //   // Two password mismatch, prompt error message
+  //   //
+  //   do {
+  //     CreateDialog (&Key, gEmptyString, gConfirmError, gPressEnter, gEmptyString, NULL);
+  //   } while (Key.UnicodeChar != CHAR_CARRIAGE_RETURN);
 
-    Status = EFI_INVALID_PARAMETER;
-  }
-  ZeroMem (TempString, (Maximum + 1) * sizeof (CHAR16));
+  //   Status = EFI_INVALID_PARAMETER;
+  // }
+  // ZeroMem (TempString, (Maximum + 1) * sizeof (CHAR16));
   ZeroMem (StringPtr, (Maximum + 1) * sizeof (CHAR16));
   FreePool (TempString);
   FreePool (StringPtr);

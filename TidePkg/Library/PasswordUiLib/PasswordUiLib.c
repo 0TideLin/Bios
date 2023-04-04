@@ -4,6 +4,9 @@
 
 EFI_GUID mPasswordUiGuid = PASSWORD_UI_LIB_FORMSET_GUID;
 
+extern unsigned char PasswordUiLibStrings[];
+extern unsigned char PasswordUiLibImages[];
+
 HII_VENDOR_DEVICE_PATH  mPasswordUiHiiVendorDevicePath = {
   {
     {
@@ -42,7 +45,31 @@ PASSWORD_UI_CALLBACK_DATA  gPasswordUiPrivate = {
   }
 };
 
+/**
+  Create continue menu in the front page.
 
+  @param[in]    HiiHandle           The hii handle for the Uiapp driver.
+  @param[in]    StartOpCodeHandle   The opcode handle to save the new opcode.
+
+**/
+VOID
+UiCreateMenu (
+  IN EFI_HII_HANDLE              HiiHandle,
+  IN VOID                        *StartOpCodeHandle
+  )
+{
+
+
+
+  HiiCreateActionOpCode (
+    StartOpCodeHandle,
+    FRONT_PAGE_KEY_CONTINUE,
+    STRING_TOKEN (STR_CONTINUE_PROMPT),
+    STRING_TOKEN (STR_CONTINUE_PROMPT),
+    EFI_IFR_FLAG_CALLBACK,
+    0
+    );
+}
 
 
 /**
@@ -86,7 +113,8 @@ CreatePasswordUiForm(
   //
   //Updata Front Page form
   //
-  UiCustomizeFrontPage (
+
+  UiCreateMenu(
     gPasswordUiPrivate.HiiHandle,
     StartOpCodeHandle
     );
@@ -290,6 +318,7 @@ PasswordUiLibConstructor (
                   gPasswordUiPrivate.DriverHandle,
                   PasswordUiLibVfrBin,
                   PasswordUiLibStrings,
+                  // PasswordUiLibImages,
                   NULL
                   );
   ASSERT (gPasswordUiPrivate.HiiHandle != NULL);

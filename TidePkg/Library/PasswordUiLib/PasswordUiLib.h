@@ -39,6 +39,17 @@
 #define LABEL_PASSWORD                 0x1100
 #define LABEL_END                          0xffff
 
+//
+// Flag values of EFI_IFR_QUESTION_HEADER
+//
+#define EFI_IFR_FLAG_READ_ONLY           0x01
+#define EFI_IFR_FLAG_CALLBACK            0x04
+#define EFI_IFR_FLAG_RESET_REQUIRED      0x10
+#define EFI_IFR_FLAG_REST_STYLE          0x20
+#define EFI_IFR_FLAG_RECONNECT_REQUIRED  0x40
+#define EFI_IFR_FLAG_OPTIONS_ONLY        0x80
+
+#define FRONT_PAGE_KEY_CONTINUE               0x1000
 typedef struct {
   UINTN                           Signature;
 

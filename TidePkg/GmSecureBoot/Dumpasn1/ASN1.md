@@ -21,7 +21,22 @@ It's a compact binary protocol.(Rerfence:https://di-mgt.com.au/docs/LaymansGuide
  11 — This is the private class. It’s intended to be something in between the universal and application classes, where an organization could define its own set of types that have the same meaning across all of their applications, but the use of the private class is discouraged, and it’s highly unlikely that you’ll ever encounter it in LDAP.
 
 ```
+For universal class(00), there are types fellow:
 
+| Type | Tag number (decimal) | Tag number(hexadecimal) |
+|  :-| :-: | :-: |
+| INTERGER | 2 | 02|
+| BIT STRING |3 |03 |
+| OCTET STRING|4|04|
+| NULL|5|05|
+| OBJECT IDENTIFIER|6|06|
+| SEQUENCE and SEQUENCE OF|16|10|
+|SET and SET OF|17|11|
+|PrintableString|19|13|
+|T61String|20|14|
+| IA5String|20|14|
+|UTCTime|23|17|
+|   |   |    |
 
 ### 2、Object Identifier
 
