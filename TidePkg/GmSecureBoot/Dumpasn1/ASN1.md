@@ -6,7 +6,7 @@ It's a compact binary protocol.(Rerfence:https://di-mgt.com.au/docs/LaymansGuide
 
 ### 1、Type Class
 (Rerfence:https://ldap.com/ldapv3-wire-protocol-reference-asn1-ber/)
-|  Bits | 8 7 | 6 | 5-4 |
+|  Bits | 8 7 | 6 | 5-0 |
 | :-:  | :-:|:-:| :-: |
 |  Purpose  |    Class | Primitive(0) or Constructed(1) | Tag Number|
 | | |
@@ -36,6 +36,18 @@ For universal class(00), there are types fellow:
 |T61String|20|14|
 | IA5String|20|14|
 |UTCTime|23|17|
+|   |   |    |
+
+
+| Element Type |	Binary Encoding |	Hex Encoding|
+|  :-| :-: | :-: |
+| Boolean 	| 00000001 |	0x01 |
+| Integer  |	00000010 |	0x02 |
+| Octet String |	00000100 | 	0x04|
+| Null   |	00000101 |	0x05 |
+| Enumerated |	00001010 |	0x0a |
+| Sequence |	00110000 	|0x30 |
+| Set |	00110001 |	0x31 |
 |   |   |    |
 
 ### 2、Object Identifier

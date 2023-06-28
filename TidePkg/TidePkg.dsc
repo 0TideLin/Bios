@@ -94,7 +94,7 @@
 	TidePkg/Application/HttpTest/HttpTest.inf
 	TidePkg/Override/HttpDynamicCommand/HttpApp.inf
 	TidePkg/Application/ReadFileAndSave/ReadFileAndSave.inf
-	TidePkg/Application/Dumpasn1/Dumpasn1.inf
+	# TidePkg/Application/Dumpasn1/Dumpasn1.inf
 
 [BuildOptions.Common]
 
