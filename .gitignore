@@ -2,3 +2,4 @@ edk2/Build
 Build
 edk2/Conf/*
 .vscode
+.vs/
