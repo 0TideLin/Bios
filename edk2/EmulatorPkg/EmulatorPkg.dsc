@@ -412,15 +412,12 @@
   MdeModulePkg/Logo/LogoDxe.inf
 !endif
   MdeModulePkg/Universal/LoadFileOnFv2/LoadFileOnFv2.inf
-  # TidePkg/Library/PasswordUiLib/PasswordUiDxe.inf
-  # TidePkg/Application/HiiDatabase/Hiidatabase.inf
-  TidePkg/Application/HiiPicture/HiiPicture.inf
   MdeModulePkg/Application/UiApp/UiApp.inf {
    <LibraryClasses>
       NULL|MdeModulePkg/Library/DeviceManagerUiLib/DeviceManagerUiLib.inf
       NULL|MdeModulePkg/Library/BootManagerUiLib/BootManagerUiLib.inf
       NULL|MdeModulePkg/Library/BootMaintenanceManagerUiLib/BootMaintenanceManagerUiLib.inf
-      NULL|TidePkg/Library/PasswordUiLib/PasswordUiLib.inf
+      # NULL|TidePkg/Library/PasswordUiLib/PasswordUiLib.inf
   }
   MdeModulePkg/Application/BootManagerMenuApp/BootManagerMenuApp.inf
 

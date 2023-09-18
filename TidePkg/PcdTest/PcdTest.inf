@@ -1,0 +1,42 @@
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = PcdTest
+  FILE_GUID                      = b34bbedf-74b1-4023-b830-413c2a8d5411
+  MODULE_TYPE                    = BASE
+  VERSION_STRING                 = 1.0
+  LIBRARY_CLASS                  = BASE
+
+#
+# The following information is for reference only and not required by the build tools.
+#
+#  VALID_ARCHITECTURES           = IA32 X64 EBC
+#
+
+# UEFI_HII_RESOURCE_SECTION      = TRUE
+
+[Sources]
+  PcdTest.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  TidePkg/TidePkg.dec
+
+[LibraryClasses]
+  DevicePathLib
+  BaseLib
+  MemoryAllocationLib
+  UefiBootServicesTableLib
+  BaseMemoryLib
+  DebugLib
+  PrintLib
+  HiiLib
+  UefiBootManagerLib
+  UefiHiiServicesLib
+
+[Pcd]
+  gTidePkgTokenSpaceGuid.TidePcdFeatureFlag
+  gTidePkgTokenSpaceGuid.TidePcdFixedAtBuild
+  gTidePkgTokenSpaceGuid.TidePcdPatchAbleInModule
+  gTidePkgTokenSpaceGuid.TidePcdDynamic
+  gTidePkgTokenSpaceGuid.TidePcdDynamicEx

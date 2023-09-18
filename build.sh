@@ -10,7 +10,6 @@ function ExportBuildEnv()
   #edk2的build工具需要这两个PATH才能在这里调用
   #
   export PACKAGES_PATH=$PWD/edk2:$PWD/TidePkg:$PWD/edk2-libc
-  export EDK_TOOLS_PATH=$WORKSPACE/edk2/BaseTools
 
   #
   #iasl工具
@@ -50,7 +49,8 @@ function BuildCode()
     build -p $WORKSPACE/TidePkg/TidePkg.dsc  -a AARCH64 -t GCC5 cleanall
   else
     #选择编译的包或者模块
-    build -p $WORKSPACE/TidePkg/TidePkg.dsc  -a AARCH64 -t GCC5
+    build -p $WORKSPACE/TidePkg/TidePkg.dsc  -a AARCH64 -t GCC5 -y Build/build.log -Y LIBRARY
+    # build -p $WORKSPACE/edk2/EmulatorPkg/EmulatorPkg.dsc -t GCC5 -a AARCH64
   fi
 }
 

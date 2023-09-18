@@ -95,6 +95,23 @@
 	TidePkg/Override/HttpDynamicCommand/HttpApp.inf
 	TidePkg/Application/ReadFileAndSave/ReadFileAndSave.inf
 	# TidePkg/Application/Dumpasn1/Dumpasn1.inf
+	TidePkg/PcdTest/PcdTest.inf
+	TidePkg/Application/DisableUsbPort/DisableUsbPort.inf
+
+[PcdsFeatureFlag]
+  gTidePkgTokenSpaceGuid.TidePcdFeatureFlag | TRUE
+
+[PcdsFixedAtBuild]
+  gTidePkgTokenSpaceGuid.TidePcdFixedAtBuild | TRUE
+
+[PcdsPatchableInModule]
+  gTidePkgTokenSpaceGuid.TidePcdPatchAbleInModule | TRUE
+
+# [PcdsDynamic]
+#   gTidePkgTokenSpaceGuid.TidePcdDynamic | TRUE
+
+# [PcdsDynamicEx]
+#   gTidePkgTokenSpaceGuid.TidePcdDynamicEx | TRUE
 
 [BuildOptions.Common]
 
